@@ -26,8 +26,8 @@ from telegram.constants import ParseMode
 # ════════════════════════════════════════════════════════════
 #                    ⚙️  الإعدادات والتوكن
 # ════════════════════════════════════════════════════════════
-BOT_TOKEN       = "8796739637:AAE2KeCf4WOqvxUGl1tqSYUjnx1sXrhMbmI"
-OWNER_ID        = 7946243967
+BOT_TOKEN       = "8443614197:AAFF5awBt6UX3ZAcxsosWuDkVUUq8GOmuRg"
+OWNER_ID        = 6814152338
 DB_PATH         = "trading_bot.db"
 
 logging.basicConfig(level=logging.INFO)
