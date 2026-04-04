@@ -5,12 +5,14 @@
 ║          بوت تداول USDT P2P العملاق - النسخة الكاملة    ║
 ║  ✅ نظام الإحالات | ✅ إدارة الأرصدة | ✅ السجلات | ✅ المتجر ║
 ║  ✅ إرسال السكرين | ✅ التحكم بالأسعار | ✅ حالة التاجر     ║
+║  🚀 مصلح للعمل على Render (Flask Web Server)            ║
 ╚══════════════════════════════════════════════════════════╝
 """
 
-import os, sqlite3, logging, random, string, json, asyncio
+import os, sqlite3, logging, random, string, json, asyncio, threading
 from datetime import datetime
 from threading import local
+from flask import Flask
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
@@ -24,12 +26,26 @@ from telegram.constants import ParseMode
 # ════════════════════════════════════════════════════════════
 #                    ⚙️  الإعدادات والتوكن
 # ════════════════════════════════════════════════════════════
-BOT_TOKEN       = "8443614197:AAFF5awBt6UX3ZAcxsosWuDkVUUq8GOmuRg"
-OWNER_ID        = 6814152338
+BOT_TOKEN       = "8796739637:AAE2KeCf4WOqvxUGl1tqSYUjnx1sXrhMbmI"
+OWNER_ID        = 7946243967
 DB_PATH         = "trading_bot.db"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ════════════════════════════════════════════════════════════
+#             🌐 سيرفر Flask الوهمي لإرضاء Render
+# ════════════════════════════════════════════════════════════
+server = Flask('')
+
+@server.route('/')
+def home():
+    return "Bot is running..."
+
+def run_web_server():
+    # Render يمرر المنفذ عبر متغير البيئة PORT
+    port = int(os.environ.get("PORT", 8080))
+    server.run(host='0.0.0.0', port=port)
 
 # ════════════════════════════════════════════════════════════
 #                    🗄️  محرك قاعدة البيانات
@@ -60,8 +76,6 @@ def init_db():
         );
         CREATE TABLE IF NOT EXISTS payment_methods (method_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, details TEXT);
         CREATE TABLE IF NOT EXISTS receive_methods (method_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, details TEXT);
-        CREATE TABLE IF NOT EXISTS transactions (tx_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, tx_type TEXT, amount REAL, status TEXT DEFAULT 'pending', notes TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS support_msgs (msg_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, message TEXT, admin_reply TEXT, status TEXT DEFAULT 'open', created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
         
         INSERT OR IGNORE INTO settings VALUES ('usdt_buy_price', '4000.0'), ('usdt_sell_price', '4100.0'), 
@@ -69,7 +83,6 @@ def init_db():
         ('welcome_msg', 'أهلاً بك في بوت التداول المعتمد.');
     ''')
 
-# دوال العمليات
 def db_get(q, p=()): return dict(r) if (r := get_conn().execute(q, p).fetchone()) else None
 def db_all(q, p=()): return [dict(r) for r in get_conn().execute(q, p).fetchall()]
 def db_run(q, p=()): return get_conn().execute(q, p).lastrowid
@@ -82,9 +95,7 @@ def fmt(n): return f"{float(n):,.2f}"
 #                    🔢  الحالات (States)
 # ════════════════════════════════════════════════════════════
 (REG_NAME, REG_COUNTRY, BUY_AMT, BUY_CONF, BUY_PAY_SEL, BUY_PROOF, BUY_RECV_SEL, BUY_ACC, BUY_DONE, 
- SELL_AMT, SELL_CONF, SELL_RECV_SEL, SELL_ACC, SELL_DONE, 
- ADD_PAY_NAME, ADD_PAY_VAL, ADD_RECV_NAME, ADD_RECV_VAL,
- SET_BUY_PR, SET_SELL_PR, TRADER_STAT, BROADCAST_MSG) = range(22)
+ SET_BUY_PR, SET_SELL_PR, TRADER_STAT, BROADCAST_MSG) = range(13)
 
 # ════════════════════════════════════════════════════════════
 #                    ⌨️  لوحات المفاتيح
@@ -93,34 +104,31 @@ def kb_main(admin=False):
     rows = [
         [KeyboardButton("🛒 شراء USDT"), KeyboardButton("💰 بيع USDT")],
         [KeyboardButton("👤 ملفي"), KeyboardButton("💳 رصيدي")],
-        [KeyboardButton("📋 طلباتي"), KeyboardButton("📊 السوق")],
-        [KeyboardButton("📜 سجل المعاملات"), KeyboardButton("🔗 الإحالة")],
         [KeyboardButton("💱 سعر الصرف"), KeyboardButton("🗃️ المخزون")],
-        [KeyboardButton("📞 الدعم"), KeyboardButton("🌟 تليجرام مميز")]
+        [KeyboardButton("🔗 الإحالة"), KeyboardButton("📞 الدعم")]
     ]
     if admin: rows.append([KeyboardButton("🔐 الإدارة")])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 def kb_admin():
     return ReplyKeyboardMarkup([
-        [KeyboardButton("📋 جميع الطلبات"), KeyboardButton("🚦 حالة التاجر")],
-        [KeyboardButton("💲 تعديل سعر الشراء"), KeyboardButton("💲 تعديل سعر البيع")],
-        [KeyboardButton("💳 إضافة طريقة دفع"), KeyboardButton("💵 إضافة طريقة استلام")],
-        [KeyboardButton("📢 إرسال للجميع"), KeyboardButton("🔙 الرئيسية")]
+        [KeyboardButton("🚦 حالة التاجر"), KeyboardButton("💲 تعديل سعر الشراء")],
+        [KeyboardButton("💲 تعديل سعر البيع"), KeyboardButton("📢 إرسال للجميع")],
+        [KeyboardButton("🔙 الرئيسية")]
     ], resize_keyboard=True)
 
 def kb_cancel(): return ReplyKeyboardMarkup([[KeyboardButton("❌ إلغاء")]], resize_keyboard=True)
 def kb_confirm(): return ReplyKeyboardMarkup([[KeyboardButton("✅ تأكيد"), KeyboardButton("❌ إلغاء")]], resize_keyboard=True)
 
 # ════════════════════════════════════════════════════════════
-#                    🚀 منطق البوت
+#                    🚀 منطق البوت الأساسي
 # ════════════════════════════════════════════════════════════
 
 async def start(upd: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = upd.effective_user.id
     user = db_get("SELECT * FROM users WHERE user_id=?", (uid,))
     if not user:
-        await upd.message.reply_text("👋 مرحباً بك في نظام التداول الذكي.\nللبدء، يرجى إرسال اسمك بالكامل:", reply_markup=kb_cancel())
+        await upd.message.reply_text("👋 مرحباً بك! يرجى إدخال اسمك الكامل للتسجيل:", reply_markup=kb_cancel())
         return REG_NAME
     await upd.message.reply_text(get_s('welcome_msg'), reply_markup=kb_main(is_admin(uid)))
     return ConversationHandler.END
@@ -128,7 +136,7 @@ async def start(upd: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def reg_name(upd, ctx):
     if upd.message.text == "❌ إلغاء": return await cancel(upd, ctx)
     ctx.user_data['n'] = upd.message.text
-    await upd.message.reply_text("🌍 حسناً، من أي بلد تتابعنا؟", reply_markup=kb_cancel())
+    await upd.message.reply_text("🌍 من أي بلد أنت؟", reply_markup=kb_cancel())
     return REG_COUNTRY
 
 async def reg_country(upd, ctx):
@@ -136,127 +144,80 @@ async def reg_country(upd, ctx):
     ref = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
     db_run("INSERT INTO users (user_id, username, full_name, country, referral_code) VALUES (?,?,?,?,?)",
            (uid, upd.effective_user.username, ctx.user_data['n'], upd.message.text, ref))
-    await upd.message.reply_text("✅ تم التسجيل بنجاح!", reply_markup=kb_main(is_admin(uid)))
+    await upd.message.reply_text("✅ تم التسجيل!", reply_markup=kb_main(is_admin(uid)))
     return ConversationHandler.END
 
-# 🛒 نظام الشراء المطور
 async def buy_start(upd, ctx):
     if get_s('trader_online_status') == '0' and not is_admin(upd.effective_user.id):
-        await upd.message.reply_text("⛔️ التاجر غير متاح حالياً لاستلام طلبات جديدة.")
+        await upd.message.reply_text("⛔️ التاجر غير متاح حالياً.")
         return ConversationHandler.END
-    await upd.message.reply_text("🛒 أدخل كمية الـ USDT المراد شراؤها:", reply_markup=kb_cancel())
+    await upd.message.reply_text("🛒 كم الكمية المطلوبة بالـ USDT؟", reply_markup=kb_cancel())
     return BUY_AMT
 
 async def buy_amt(upd, ctx):
-    if upd.message.text == "❌ إلغاء": return await cancel(upd, ctx)
     try:
-        amt = float(upd.message.text.replace(',', '.'))
+        amt = float(upd.message.text)
         ctx.user_data['amt'] = amt
-        price = float(get_s('usdt_sell_price'))
-        ctx.user_data['total'] = amt * price
-        await upd.message.reply_text(f"📦 الكمية: {amt} USDT\n💰 السعر: {price} SDG\n💵 الإجمالي: {fmt(amt * price)} SDG\n\n✅ هل تود المتابعة واختيار وسيلة الدفع؟", reply_markup=kb_confirm())
+        ctx.user_data['total'] = amt * float(get_s('usdt_sell_price'))
+        await upd.message.reply_text(f"💰 الإجمالي: {fmt(ctx.user_data['total'])} SDG\n✅ تأكيد؟", reply_markup=kb_confirm())
         return BUY_CONF
     except: return BUY_AMT
 
 async def buy_conf(upd, ctx):
     if upd.message.text == "✅ تأكيد":
         mths = db_all("SELECT * FROM payment_methods")
-        if not mths:
-            await upd.message.reply_text("⚠️ لا توجد وسائل دفع، تواصل مع الإدارة.")
-            return await cancel(upd, ctx)
+        if not mths: return await cancel(upd, ctx)
         btns = [[InlineKeyboardButton(m['name'], callback_data=f"bpay_{m['method_id']}")] for m in mths]
-        await upd.message.reply_text("💳 اختر وسيلة الدفع المناسبة لك:", reply_markup=InlineKeyboardMarkup(btns))
+        await upd.message.reply_text("💳 اختر وسيلة الدفع:", reply_markup=InlineKeyboardMarkup(btns))
         return BUY_PAY_SEL
     return await cancel(upd, ctx)
 
 async def buy_pay_sel(upd, ctx):
     q = upd.callback_query
     await q.answer()
-    mid = q.data.split("_")[1]
-    ctx.user_data['pmid'] = mid
-    m = db_get("SELECT * FROM payment_methods WHERE method_id=?", (mid,))
-    await q.edit_message_text(f"🔢 يرجى تحويل `{fmt(ctx.user_data['total'])}` SDG إلى:\n\n`{m['details']}`\n\n📸 أرسل صورة الإيصال (Screenshot) الآن:", parse_mode=ParseMode.MARKDOWN)
+    ctx.user_data['pmid'] = q.data.split("_")[1]
+    m = db_get("SELECT * FROM payment_methods WHERE method_id=?", (ctx.user_data['pmid'],))
+    await q.edit_message_text(f"⚠️ حول للمعلومات التالية:\n`{m['details']}`\n\n📸 أرسل صورة الإيصال الآن:")
     return BUY_PROOF
 
 async def buy_proof(upd, ctx):
-    if not upd.message.photo:
-        await upd.message.reply_text("❌ يجب إرسال صورة إيصال التحويل للمتابعة.")
-        return BUY_PROOF
+    if not upd.message.photo: return BUY_PROOF
     ctx.user_data['proof'] = upd.message.photo[-1].file_id
     mths = db_all("SELECT * FROM receive_methods")
     btns = [[InlineKeyboardButton(m['name'], callback_data=f"brecv_{m['method_id']}")] for m in mths]
-    await upd.message.reply_text("💵 اختر وسيلة استلام الـ USDT:", reply_markup=InlineKeyboardMarkup(btns))
+    await upd.message.reply_text("💵 اختر وسيلة الاستلام:", reply_markup=InlineKeyboardMarkup(btns))
     return BUY_RECV_SEL
 
 async def buy_recv_sel(upd, ctx):
     q = upd.callback_query
     await q.answer()
     ctx.user_data['rmid'] = q.data.split("_")[1]
-    await q.edit_message_text("📝 أرسل الآن عنوان محفظتك أو رقم الحساب لاستلام الـ USDT:")
+    await q.edit_message_text("📝 أرسل عنوان محفظتك للاستلام:")
     return BUY_ACC
 
 async def buy_acc(upd, ctx):
     ctx.user_data['acc'] = upd.message.text
-    await upd.message.reply_text("✅ تم تأكيد البيانات، هل تود إرسال الطلب نهائياً للتاجر؟", reply_markup=kb_confirm())
+    await upd.message.reply_text("✅ تم، اضغط تأكيد للإرسال النهائي.", reply_markup=kb_confirm())
     return BUY_DONE
 
 async def buy_finish(upd, ctx):
     if upd.message.text != "✅ تأكيد": return await cancel(upd, ctx)
     uid = upd.effective_user.id
-    oid = db_run("INSERT INTO orders (buyer_id, order_type, amount_usdt, price_per_usdt, total_sdg, status, payment_method_id, payment_proof, receive_method_id, user_account_details) VALUES (?,?,?,?,?,?,?,?,?,?)",
-           (uid, 'buy', ctx.user_data['amt'], float(get_s('usdt_sell_price')), ctx.user_data['total'], 'pending', ctx.user_data['pmid'], ctx.user_data['proof'], ctx.user_data['rmid'], ctx.user_data['acc']))
+    oid = db_run("INSERT INTO orders (buyer_id, order_type, amount_usdt, total_sdg, status, payment_proof, user_account_details) VALUES (?,?,?,?,?,?,?)",
+           (uid, 'buy', ctx.user_data['amt'], ctx.user_data['total'], 'pending', ctx.user_data['proof'], ctx.user_data['acc']))
     
-    # الإرسال الفوري للتاجر مع السكرين شوت
-    caption = f"🔔 *طلب شراء جديد #{oid}*\n👤 العميل: `{uid}`\n📦 الكمية: {ctx.user_data['amt']} USDT\n💰 المبلغ: {fmt(ctx.user_data['total'])} SDG\n🔢 حساب الاستلام: `{ctx.user_data['acc']}`"
-    await ctx.bot.send_photo(chat_id=OWNER_ID, photo=ctx.user_data['proof'], caption=caption, parse_mode=ParseMode.MARKDOWN)
-    
-    await upd.message.reply_text("🚀 تم إرسال طلبك! سيتم تنبيهك عند الموافقة.", reply_markup=kb_main(is_admin(uid)))
-    ctx.user_data.clear()
+    await ctx.bot.send_photo(chat_id=OWNER_ID, photo=ctx.user_data['proof'], caption=f"🔔 طلب شراء #{oid}\n👤 العميل: {uid}\n📦 الكمية: {ctx.user_data['amt']} USDT\n💰 المبلغ: {fmt(ctx.user_data['total'])} SDG\n🔢 حساب الاستلام: {ctx.user_data['acc']}")
+    await upd.message.reply_text("🚀 تم إرسال الطلب بنجاح!", reply_markup=kb_main(is_admin(uid)))
     return ConversationHandler.END
 
-# 🚦 حالة التاجر (مصلح)
 async def trader_stat_start(upd, ctx):
-    if not is_admin(upd.effective_user.id): return ConversationHandler.END
-    await upd.message.reply_text("🚦 التحكم في ظهور التاجر:", reply_markup=ReplyKeyboardMarkup([["🟢 تشغيل", "🔴 إيقاف"], ["❌ إلغاء"]], resize_keyboard=True))
+    await upd.message.reply_text("🚦 اختر الحالة:", reply_markup=ReplyKeyboardMarkup([["🟢 تشغيل", "🔴 إيقاف"], ["❌ إلغاء"]], resize_keyboard=True))
     return TRADER_STAT
 
 async def trader_stat_done(upd, ctx):
     t = upd.message.text
-    if t == "🟢 تشغيل": set_s('trader_online_status', '1')
-    elif t == "🔴 إيقاف": set_s('trader_online_status', '0')
-    await upd.message.reply_text(f"✅ الحالة الحالية: {t}", reply_markup=kb_admin())
-    return ConversationHandler.END
-
-# 💲 تعديل الأسعار
-async def price_buy_start(upd, ctx):
-    if not is_admin(upd.effective_user.id): return ConversationHandler.END
-    await upd.message.reply_text("💲 أدخل سعر الشراء الجديد (SDG):", reply_markup=kb_cancel())
-    return SET_BUY_PR
-
-async def price_buy_done(upd, ctx):
-    try:
-        val = float(upd.message.text)
-        set_s('usdt_buy_price', val)
-        await upd.message.reply_text(f"✅ تم تعديل سعر الشراء إلى: {val}", reply_markup=kb_admin())
-    except: pass
-    return ConversationHandler.END
-
-# 📢 الإرسال الجماعي
-async def broadcast_start(upd, ctx):
-    if not is_admin(upd.effective_user.id): return ConversationHandler.END
-    await upd.message.reply_text("📢 أرسل الرسالة التي تريد تعميمها لجميع المستخدمين:", reply_markup=kb_cancel())
-    return BROADCAST_MSG
-
-async def broadcast_done(upd, ctx):
-    msg = upd.message.text
-    users = db_all("SELECT user_id FROM users")
-    count = 0
-    for u in users:
-        try:
-            await ctx.bot.send_message(chat_id=u['user_id'], text=f"📢 *تنبيه من الإدارة:*\n\n{msg}", parse_mode=ParseMode.MARKDOWN)
-            count += 1
-        except: pass
-    await upd.message.reply_text(f"✅ تمت العملية بنجاح. أرسلت إلى {count} مستخدم.", reply_markup=kb_admin())
+    set_s('trader_online_status', '1' if t == "🟢 تشغيل" else '0')
+    await upd.message.reply_text(f"✅ تم التحديث: {t}", reply_markup=kb_admin())
     return ConversationHandler.END
 
 async def cancel(upd, ctx):
@@ -264,12 +225,15 @@ async def cancel(upd, ctx):
     await upd.message.reply_text("⚠️ تم الإلغاء.", reply_markup=kb_main(is_admin(upd.effective_user.id)))
     return ConversationHandler.END
 
-# 🏁 تشغيل
+# 🏁 تشغيل المحرك
 def main():
     init_db()
+    
+    # تشغيل سيرفر Flask في الخلفية لـ Render
+    threading.Thread(target=run_web_server, daemon=True).start()
+    
     app = Application.builder().token(BOT_TOKEN).build()
     
-    # تجميع الحوارات
     buy_conv = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(r"^🛒 شراء USDT$"), buy_start)],
         states={
@@ -284,38 +248,21 @@ def main():
         fallbacks=[MessageHandler(filters.Regex("❌ إلغاء"), cancel)], per_message=False
     )
 
-    admin_conv = ConversationHandler(
-        entry_points=[
-            MessageHandler(filters.Regex(r"^🚦 حالة التاجر$"), trader_stat_start),
-            MessageHandler(filters.Regex(r"^💲 تعديل سعر الشراء$"), price_buy_start),
-            MessageHandler(filters.Regex(r"^📢 إرسال للجميع$"), broadcast_start)
-        ],
-        states={
-            TRADER_STAT: [MessageHandler(filters.Regex(r"^(🟢 تشغيل|🔴 إيقاف)$"), trader_stat_done)],
-            SET_BUY_PR: [MessageHandler(filters.TEXT & ~filters.COMMAND, price_buy_done)],
-            BROADCAST_MSG: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_done)]
-        },
-        fallbacks=[MessageHandler(filters.Regex("❌ إلغاء"), cancel)]
-    )
-
-    reg_conv = ConversationHandler(
+    app.add_handler(ConversationHandler(
         entry_points=[CommandHandler("start", start)],
-        states={
-            REG_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_name)],
-            REG_COUNTRY: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_country)]
-        },
+        states={REG_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_name)], REG_COUNTRY: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_country)]},
         fallbacks=[MessageHandler(filters.Regex("❌ إلغاء"), cancel)]
-    )
-
-    app.add_handler(reg_conv); app.add_handler(buy_conv); app.add_handler(admin_conv)
+    ))
     
-    # الأزرار العامة
-    app.add_handler(MessageHandler(filters.Regex(r"^👤 ملفي$"), lambda u,c: u.message.reply_text(f"👤 الاسم: {db_get('SELECT full_name FROM users WHERE user_id=?', (u.effective_user.id,))['full_name']}")))
-    app.add_handler(MessageHandler(filters.Regex(r"^💱 سعر الصرف$"), lambda u,c: u.message.reply_text(f"📥 شراء: {get_s('usdt_buy_price')}\n📤 بيع: {get_s('usdt_sell_price')}")))
-    app.add_handler(MessageHandler(filters.Regex(r"^🗃️ المخزون$"), lambda u,c: u.message.reply_text(f"المتاح: {get_s('available_usdt_inventory')} USDT")))
-    app.add_handler(MessageHandler(filters.Regex(r"^🔐 الإدارة$"), lambda u,c: u.message.reply_text("لوحة الإدارة:", reply_markup=kb_admin()) if is_admin(u.effective_user.id) else None))
-    app.add_handler(MessageHandler(filters.Regex(r"^🔙 الرئيسية$"), lambda u,c: u.message.reply_text("الرئيسية:", reply_markup=kb_main(is_admin(u.effective_user.id)))))
+    app.add_handler(buy_conv)
+    app.add_handler(ConversationHandler(entry_points=[MessageHandler(filters.Regex(r"^🚦 حالة التاجر$"), trader_stat_start)], states={TRADER_STAT: [MessageHandler(filters.Regex(r"^(🟢 تشغيل|🔴 إيقاف)$"), trader_stat_done)]}, fallbacks=[MessageHandler(filters.Regex("❌ إلغاء"), cancel)]))
 
+    app.add_handler(MessageHandler(filters.Regex(r"^🔐 الإدارة$"), lambda u,c: u.message.reply_text("الإدارة:", reply_markup=kb_admin()) if is_admin(u.effective_user.id) else None))
+    app.add_handler(MessageHandler(filters.Regex(r"^🔙 الرئيسية$"), lambda u,c: u.message.reply_text("الرئيسية", reply_markup=kb_main(is_admin(u.effective_user.id)))))
+    app.add_handler(MessageHandler(filters.Regex(r"^💱 سعر الصرف$"), lambda u,c: u.message.reply_text(f"📥 شراء: {get_s('usdt_buy_price')}\n📤 بيع: {get_s('usdt_sell_price')}")))
+
+    print("🚀 البوت والسيرفر يعملان...")
     app.run_polling()
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
