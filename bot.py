@@ -3,15 +3,16 @@
 """
 ╔══════════════════════════════════════════════════════════╗
 ║          بوت تداول USDT P2P على تيليغرام               ║
-║          Version 10.3 - ZERO CALLBACK BUGS              ║
+║          Version 10.4 - SYNTAX ERROR FIXED              ║
 ╚══════════════════════════════════════════════════════════╝
 """
 
-import os
-import sqlite3
-import logging
+import os, sys, sqlite3, logging, random, string
 from datetime import datetime
 from threading import local
+
+# تثبيت تلقائي للمكتبة في حال لم تكن مثبتة على الاستضافة
+os.system(f"{sys.executable} -m pip install python-telegram-bot==20.6 --quiet")
 
 _db_local = local()
 
@@ -84,9 +85,7 @@ def get_user(uid): return db_get("SELECT * FROM users WHERE user_id=?", (uid,))
 def is_admin(uid): return uid == OWNER_ID
 def is_online(): return bool(int(get_s('trader_online_status') or 1))
 def fmt(n): return f"{float(n):,.2f}"
-def make_ref():
-    import random, string
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+def make_ref(): return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
 # ════════════════════════════════════════════════════════════
 #                    ⌨️  لوحات المفاتيح
@@ -214,9 +213,9 @@ async def show_exchange(upd, ctx):
     await upd.message.reply_text(f"💱 *سعر الصرف*\n📥 نشتري بـ: `{get_s('usdt_buy_price')}` جنيه\n📤 نبيع بـ: `{get_s('usdt_sell_price')}` جنيه", parse_mode=ParseMode.MARKDOWN)
 
 # ════════════════════════════════════════════════════════════
-#                    🛒 شراء USDT (مُصلح 100%)
+#                    🛒 شراء USDT
 # ════════════════════════════════════════════════════════════
-BUY_STEPS = {'START': 100, 'AMT': 101, 'CONF': 102, 'WAIT_PAY': 103, 'WAIT_RECV': 104, 'WAIT_ACC': 105}
+BUY_STEPS = {'START': 100, 'AMT': 101, 'CONF': 102, 'WAIT_PAY': 103, 'WAIT_RECV': 104, 'WAIT_ACC': 105, 'DONE': 106}
 
 async def buy_start(upd, ctx):
     if await guard(upd, ctx): return ConversationHandler.END
@@ -231,8 +230,10 @@ async def buy_amt(upd, ctx):
     try:
         amt = float(t.replace('،', '.'))
         if amt <= 0: raise ValueError
-    except: return await upd.message.reply_text("❌ أدخل رقماً صحيحاً") or BUY_STEPS['AMT']
-    ctx.user_data['amt'] = amt; ctx.user_data['price'] = float(get_s('usdt_sell_price'))
+    except:
+        return await upd.message.reply_text("❌ أدخل رقماً صحيحاً") or BUY_STEPS['AMT']
+    ctx.user_data['amt'] = amt
+    ctx.user_data['price'] = float(get_s('usdt_sell_price'))
     ctx.user_data['total'] = amt * ctx.user_data['price']
     await upd.message.reply_text(f"📦 {amt} USDT\n💰 {fmt(ctx.user_data['total'])} SDG\n✅ تأكيد:", reply_markup=kb_confirm())
     return BUY_STEPS['CONF']
@@ -240,7 +241,9 @@ async def buy_amt(upd, ctx):
 async def buy_conf(upd, ctx):
     t = upd.message.text.strip()
     if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
-    if t != "✅ تأكيد": await upd.message.reply_text("❌ اختر تأكيد أو إلغاء"); return BUY_STEPS['CONF']
+    if t != "✅ تأكيد":
+        await upd.message.reply_text("❌ اختر تأكيد أو إلغاء")
+        return BUY_STEPS['CONF']
     
     methods = db_all("SELECT * FROM payment_methods")
     if not methods: return await upd.message.reply_text("⚠️ لا توجد طرق دفع مضافة") or cancel_flow(upd, ctx)
@@ -249,7 +252,6 @@ async def buy_conf(upd, ctx):
     await upd.message.reply_text("💳 اختر طريقة الدفع:", reply_markup=InlineKeyboardMarkup(buttons))
     return BUY_STEPS['WAIT_PAY']
 
-# ✅ معالج عالمي لأزرار الدفع والاستلام (يمنع التوقف تماماً)
 async def global_inline_handler(upd, ctx):
     q = upd.callback_query
     await q.answer()
@@ -278,7 +280,9 @@ async def global_inline_handler(upd, ctx):
     return None
 
 async def buy_proof(upd, ctx):
-    if not upd.message.photo: await upd.message.reply_text("❌ أرسل صورة فقط"); return BUY_STEPS['WAIT_PAY']
+    if not upd.message.photo:
+        await upd.message.reply_text("❌ أرسل صورة فقط")
+        return BUY_STEPS['WAIT_PAY']
     ctx.user_data['proof'] = upd.message.photo[-1].file_id
     methods = db_all("SELECT * FROM receive_methods")
     if not methods: return await upd.message.reply_text("⚠️ لا توجد طرق استلام") or cancel_flow(upd, ctx)
@@ -289,10 +293,13 @@ async def buy_proof(upd, ctx):
 async def buy_acc(upd, ctx):
     t = upd.message.text.strip()
     if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
-    if len(t) < 3: await upd.message.reply_text("❌ أدخل رقم صحيح"); return BUY_STEPS['WAIT_ACC']
+    if len(t) < 3:
+        await upd.message.reply_text("❌ أدخل رقم صحيح")
+        return BUY_STEPS['WAIT_ACC']
     ctx.user_data['acc'] = t
-    await upd.message.reply_text(f"✅ *تأكيد*\n💰 {fmt(ctx.user_data['total'])} SDG\n💵 {db_get('SELECT name FROM receive_methods WHERE method_id=?', (ctx.user_data['recv_mid'],))['name']}\n🔢 `{t}`\n✅ للمتابعة:", reply_markup=kb_confirm(), parse_mode=ParseMode.MARKDOWN)
-    return BUY_STEPS['WAIT_ACC'] + 1  # حالة التأكيد النهائي
+    recv_name = db_get('SELECT name FROM receive_methods WHERE method_id=?', (ctx.user_data['recv_mid'],))['name']
+    await upd.message.reply_text(f"✅ *تأكيد*\n💰 {fmt(ctx.user_data['total'])} SDG\n💵 {recv_name}\n🔢 `{t}`\n✅ للمتابعة:", reply_markup=kb_confirm(), parse_mode=ParseMode.MARKDOWN)
+    return BUY_STEPS['DONE']
 
 async def buy_finish(upd, ctx):
     t = upd.message.text.strip()
@@ -307,10 +314,12 @@ async def buy_finish(upd, ctx):
     try:
         cap = f"🔔 *طلب شراء* #{uid}\n📦 {ctx.user_data['amt']} USDT | 💰 {fmt(ctx.user_data['total'])} SDG\n🔢 حساب: `{ctx.user_data['acc']}`"
         await ctx.bot.send_photo(OWNER_ID, ctx.user_data['proof'], caption=cap, parse_mode=ParseMode.MARKDOWN)
-    except: await ctx.bot.send_message(OWNER_ID, f"🔔 طلب شراء #{uid} (الصورة لم تصل)")
+    except:
+        await ctx.bot.send_message(OWNER_ID, f"🔔 طلب شراء #{uid} (الصورة لم تصل)")
     
     await upd.message.reply_text("✅ تم إرسال الطلب!", reply_markup=kb_main(is_admin(uid)))
-    ctx.user_data.clear(); return ConversationHandler.END
+    ctx.user_data.clear()
+    return ConversationHandler.END
 
 # ════════════════════════════════════════════════════════════
 #                    💰 بيع USDT
@@ -330,8 +339,10 @@ async def sell_amt(upd, ctx):
     try:
         amt = float(t.replace('،', '.'))
         if amt <= 0: raise ValueError
-    except: return await upd.message.reply_text("❌ رقم صحيح") or SELL_STEPS['AMT']
-    ctx.user_data['amt'] = amt; ctx.user_data['price'] = float(get_s('usdt_buy_price'))
+    except:
+        return await upd.message.reply_text("❌ رقم صحيح") or SELL_STEPS['AMT']
+    ctx.user_data['amt'] = amt
+    ctx.user_data['price'] = float(get_s('usdt_buy_price'))
     ctx.user_data['total'] = amt * ctx.user_data['price']
     await upd.message.reply_text(f"📦 {amt} USDT | 💰 {fmt(ctx.user_data['total'])} SDG\n✅ تأكيد:", reply_markup=kb_confirm())
     return SELL_STEPS['CONF']
@@ -339,12 +350,16 @@ async def sell_amt(upd, ctx):
 async def sell_conf(upd, ctx):
     t = upd.message.text.strip()
     if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
-    if t != "✅ تأكيد": await upd.message.reply_text("❌ اختر تأكيد أو إلغاء"); return SELL_STEPS['CONF']
+    if t != "✅ تأكيد":
+        await upd.message.reply_text("❌ اختر تأكيد أو إلغاء")
+        return SELL_STEPS['CONF']
     await upd.message.reply_text(f"📥 أرسل USDT إلى:\n`{DEPOSIT_ADDRESS}`\n📸 ثم أرسل إثبات التحويل:", reply_markup=kb_cancel(), parse_mode=ParseMode.MARKDOWN)
     return SELL_STEPS['WAIT_RECV']
 
 async def sell_proof(upd, ctx):
-    if not upd.message.photo: await upd.message.reply_text("❌ صورة فقط"); return SELL_STEPS['WAIT_RECV']
+    if not upd.message.photo:
+        await upd.message.reply_text("❌ صورة فقط")
+        return SELL_STEPS['WAIT_RECV']
     ctx.user_data['proof'] = upd.message.photo[-1].file_id
     methods = db_all("SELECT * FROM receive_methods")
     if not methods: return await upd.message.reply_text("⚠️ لا توجد طرق استلام") or cancel_flow(upd, ctx)
@@ -372,12 +387,14 @@ async def sell_finish(upd, ctx):
     try:
         cap = f"🔔 *طلب بيع* #{uid}\n📦 {ctx.user_data['amt']} USDT | 💰 {fmt(ctx.user_data['total'])} SDG\n🔢 حساب: `{ctx.user_data['acc']}`"
         await ctx.bot.send_photo(OWNER_ID, ctx.user_data['proof'], caption=cap, parse_mode=ParseMode.MARKDOWN)
-    except: await ctx.bot.send_message(OWNER_ID, f"🔔 طلب بيع #{uid}")
+    except:
+        await ctx.bot.send_message(OWNER_ID, f"🔔 طلب بيع #{uid}")
     await upd.message.reply_text("✅ تم الاستلام!", reply_markup=kb_main(is_admin(uid)))
-    ctx.user_data.clear(); return ConversationHandler.END
+    ctx.user_data.clear()
+    return ConversationHandler.END
 
 # ════════════════════════════════════════════════════════════
-#                    💵 عرض + 📤 سحب + 🌟 + 📞
+#                    💵 عرض + 📤 سحب + 🌟 + 
 # ════════════════════════════════════════════════════════════
 async def offer_cmd(upd, ctx):
     if await guard(upd, ctx): return ConversationHandler.END
@@ -389,50 +406,70 @@ async def offer_type(upd, ctx):
     if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
     if t not in ["شــراء","بــيــع"]: return await upd.message.reply_text("❌ اختر من الأزرار") or 300
     ctx.user_data['otype'] = t; await upd.message.reply_text("📩 أدخل الكمية (USDT):", reply_markup=kb_cancel()); return 301
+
 async def offer_amt(upd, ctx):
     t = upd.message.text.strip()
     if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
-    try: amt=float(t.replace('،','.')); 
-    except: return await upd.message.reply_text("❌ رقم صحيح") or 301
-    ctx.user_data['amt']=amt; await upd.message.reply_text("📩 أدخل السعر:", reply_markup=kb_cancel()); return 302
+    try:
+        amt = float(t.replace('،', '.'))
+    except:
+        return await upd.message.reply_text("❌ رقم صحيح") or 301
+    ctx.user_data['amt'] = amt; await upd.message.reply_text("📩 أدخل السعر:", reply_markup=kb_cancel()); return 302
+
 async def offer_price(upd, ctx):
     t = upd.message.text.strip()
     if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
-    try: p=float(t.replace('،','.')); 
-    except: return await upd.message.reply_text("❌ سعر صحيح") or 302
-    ctx.user_data['price']=p; await upd.message.reply_text(f"📋 {ctx.user_data['otype']} | {fmt(ctx.user_data['amt'])} USDT | 💰 {fmt(p)}\n✅ تأكيد:", reply_markup=kb_confirm(), parse_mode=ParseMode.MARKDOWN); return 303
+    try:
+        p = float(t.replace('،', '.'))
+    except:
+        return await upd.message.reply_text("❌ سعر صحيح") or 302
+    ctx.user_data['price'] = p
+    await upd.message.reply_text(f"📋 {ctx.user_data['otype']} | {fmt(ctx.user_data['amt'])} USDT | 💰 {fmt(p)}\n✅ تأكيد:", reply_markup=kb_confirm(), parse_mode=ParseMode.MARKDOWN); return 303
+
 async def offer_conf(upd, ctx):
     t = upd.message.text.strip()
     if t != "✅ تأكيد": return await cancel_flow(upd, ctx)
-    uid=upd.effective_user.id; typ='offer_buy' if ctx.user_data['otype']=='شــراء' else 'offer_sell'
-    s=uid if typ=='offer_sell' else OWNER_ID; b=OWNER_ID if typ=='offer_sell' else uid
-    oid=db_run("INSERT INTO orders (seller_id,buyer_id,order_type,amount_usdt,price_per_usdt,total_sdg,status) VALUES (?,?,?,?,?,?,?)",(s,b,typ,ctx.user_data['amt'],ctx.user_data['price'],ctx.user_data['amt']*ctx.user_data['price'],'pending_offer'))
+    uid = upd.effective_user.id
+    typ = 'offer_buy' if ctx.user_data['otype'] == 'شــراء' else 'offer_sell'
+    s = uid if typ == 'offer_sell' else OWNER_ID
+    b = OWNER_ID if typ == 'offer_sell' else uid
+    oid = db_run("INSERT INTO orders (seller_id,buyer_id,order_type,amount_usdt,price_per_usdt,total_sdg,status) VALUES (?,?,?,?,?,?,?)", (s,b,typ,ctx.user_data['amt'],ctx.user_data['price'],ctx.user_data['amt']*ctx.user_data['price'],'pending_offer'))
     try: await ctx.bot.send_message(OWNER_ID, f"🔔 عرض جديد #{oid}")
     except: pass
     await upd.message.reply_text("✅ تم الإرسال!", reply_markup=kb_main(is_admin(uid))); ctx.user_data.clear(); return ConversationHandler.END
 
 async def withdraw_start(upd, ctx):
     if await guard(upd, ctx): return ConversationHandler.END
-    u=get_user(upd.effective_user.id)
-    if u['balance_usdt']<=0: return await upd.message.reply_text("❌ رصيدك فارغ")
+    u = get_user(upd.effective_user.id)
+    if u['balance_usdt'] <= 0: return await upd.message.reply_text("❌ رصيدك فارغ")
     await upd.message.reply_text(f"📤 *سحب*\nرصيدك: {fmt(u['balance_usdt'])} USDT\nأدخل الكمية:", reply_markup=kb_cancel(), parse_mode=ParseMode.MARKDOWN); return 400
+
 async def withdraw_amt(upd, ctx):
-    t=upd.message.text.strip(); 
-    if t=="❌ إلغاء": return await cancel_flow(upd, ctx)
-    try: a=float(t.replace('،','.')); u=get_user(upd.effective_user.id); 
-    if a<=0 or a>u['balance_usdt']: raise ValueError
-    except: return await upd.message.reply_text("❌ كمية خاطئة") or 400
-    ctx.user_data['amt']=a; await upd.message.reply_text("📩 أدخل عنوان TRC20:", reply_markup=kb_cancel()); return 401
+    t = upd.message.text.strip()
+    if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
+    try:
+        a = float(t.replace('،', '.'))
+        u = get_user(upd.effective_user.id)
+        if a <= 0 or a > u['balance_usdt']:
+            raise ValueError
+    except:
+        return await upd.message.reply_text("❌ كمية خاطئة أو غير كافية") or 400
+    ctx.user_data['amt'] = a
+    await upd.message.reply_text("📩 أدخل عنوان TRC20:", reply_markup=kb_cancel()); return 401
+
 async def withdraw_addr(upd, ctx):
-    t=upd.message.text.strip(); 
-    if t=="❌ إلغاء": return await cancel_flow(upd, ctx)
-    if len(t)<30: return await upd.message.reply_text("❌ عنوان غير صحيح") or 401
-    ctx.user_data['addr']=t; await upd.message.reply_text(f"📤 تأكيد: {fmt(ctx.user_data['amt'])} إلى `{t}`\n✅ تأكيد:", reply_markup=kb_confirm(), parse_mode=ParseMode.MARKDOWN); return 402
+    t = upd.message.text.strip()
+    if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
+    if len(t) < 30: return await upd.message.reply_text("❌ عنوان غير صحيح") or 401
+    ctx.user_data['addr'] = t
+    await upd.message.reply_text(f"📤 تأكيد: {fmt(ctx.user_data['amt'])} إلى `{t}`\n✅ تأكيد:", reply_markup=kb_confirm(), parse_mode=ParseMode.MARKDOWN); return 402
+
 async def withdraw_conf(upd, ctx):
-    t=upd.message.text.strip(); 
-    if t!="✅ تأكيد": return await cancel_flow(upd, ctx)
-    uid=upd.effective_user.id; db_run("UPDATE users SET balance_usdt=balance_usdt-? WHERE user_id=?",(ctx.user_data['amt'],uid))
-    db_run("INSERT INTO transactions (user_id,tx_type,amount,status,notes) VALUES (?,?,?,?,?)",(uid,'withdraw',ctx.user_data['amt'],'pending',f"إلى: {ctx.user_data['addr']}"))
+    t = upd.message.text.strip()
+    if t != "✅ تأكيد": return await cancel_flow(upd, ctx)
+    uid = upd.effective_user.id
+    db_run("UPDATE users SET balance_usdt=balance_usdt-? WHERE user_id=?", (ctx.user_data['amt'], uid))
+    db_run("INSERT INTO transactions (user_id,tx_type,amount,status,notes) VALUES (?,?,?,?,?)", (uid, 'withdraw', ctx.user_data['amt'], 'pending', f"إلى: {ctx.user_data['addr']}"))
     try: await ctx.bot.send_message(OWNER_ID, f"🔔 سحب جديد!\n👤 {uid} | 📦 {fmt(ctx.user_data['amt'])} USDT")
     except: pass
     await upd.message.reply_text("✅ تم إرسال طلب السحب!", reply_markup=kb_main(is_admin(uid))); ctx.user_data.clear(); return ConversationHandler.END
@@ -441,34 +478,43 @@ async def premium_cmd(upd, ctx):
     if await guard(upd, ctx): return ConversationHandler.END
     if await check_trader(upd): return ConversationHandler.END
     await upd.message.reply_text(f"🌟 *تليجرام مميز*\nالسعر: {fmt(get_s('usdt_sell_price'))} USDT\nأدخل الكمية:", reply_markup=kb_cancel(), parse_mode=ParseMode.MARKDOWN); return 500
+
 async def premium_amt(upd, ctx):
-    t=upd.message.text.strip(); 
-    if t=="❌ إلغاء": return await cancel_flow(upd, ctx)
-    try: q=int(t); u=get_user(upd.effective_user.id); p=float(get_s('usdt_sell_price')); 
-    if q<=0 or q*p>u['balance_usdt']: raise ValueError
-    except: return await upd.message.reply_text("❌ كمية/رصيد غير كافٍ") or 500
-    ctx.user_data['qty']=q; ctx.user_data['total']=q*p
+    t = upd.message.text.strip()
+    if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
+    try:
+        q = int(t)
+        u = get_user(upd.effective_user.id)
+        p = float(get_s('usdt_sell_price'))
+        if q <= 0 or q * p > u['balance_usdt']:
+            raise ValueError
+    except:
+        return await upd.message.reply_text("❌ كمية أو رصيد غير كافٍ") or 500
+    ctx.user_data['qty'] = q
+    ctx.user_data['total'] = q * p
     await upd.message.reply_text(f"🌟 تأكيد: {q} اشتراك بـ {fmt(q*p)} USDT\n✅ تأكيد:", reply_markup=kb_confirm(), parse_mode=ParseMode.MARKDOWN); return 501
+
 async def premium_conf(upd, ctx):
-    t=upd.message.text.strip(); 
-    if t!="✅ تأكيد": return await cancel_flow(upd, ctx)
-    db_run("UPDATE users SET balance_usdt=balance_usdt-? WHERE user_id=?",(ctx.user_data['total'],upd.effective_user.id))
-    db_run("INSERT INTO transactions (user_id,tx_type,amount,status) VALUES (?,?,?,?)",(upd.effective_user.id,'premium',ctx.user_data['total'],'completed'))
+    t = upd.message.text.strip()
+    if t != "✅ تأكيد": return await cancel_flow(upd, ctx)
+    db_run("UPDATE users SET balance_usdt=balance_usdt-? WHERE user_id=?", (ctx.user_data['total'], upd.effective_user.id))
+    db_run("INSERT INTO transactions (user_id,tx_type,amount,status) VALUES (?,?,?,?)", (upd.effective_user.id, 'premium', ctx.user_data['total'], 'completed'))
     await upd.message.reply_text(f"✅ تم شراء {ctx.user_data['qty']} اشتراك!", reply_markup=kb_main(is_admin(upd.effective_user.id))); ctx.user_data.clear(); return ConversationHandler.END
 
 async def support_cmd(upd, ctx):
     if await guard(upd, ctx): return ConversationHandler.END
     await upd.message.reply_text("📞 *الدعم الفني*\nاكتب مشكلتك:", reply_markup=kb_cancel(), parse_mode=ParseMode.MARKDOWN); return 600
+
 async def support_msg(upd, ctx):
-    t=upd.message.text.strip(); 
-    if t=="❌ إلغاء": return await cancel_flow(upd, ctx)
-    db_run("INSERT INTO support_msgs (user_id,message) VALUES (?,?)",(upd.effective_user.id,t))
+    t = upd.message.text.strip()
+    if t == "❌ إلغاء": return await cancel_flow(upd, ctx)
+    db_run("INSERT INTO support_msgs (user_id,message) VALUES (?,?)", (upd.effective_user.id, t))
     try: await ctx.bot.send_message(OWNER_ID, f"📩 دعم جديد من {upd.effective_user.id}:\n{t}")
     except: pass
     await upd.message.reply_text("✅ تم الإرسال", reply_markup=kb_main(is_admin(upd.effective_user.id))); return ConversationHandler.END
 
 # ════════════════════════════════════════════════════════════
-#                    🔐 لوحة الإدارة (مُصلحة)
+#                    🔐 لوحة الإدارة
 # ════════════════════════════════════════════════════════════
 async def admin_panel(upd, ctx):
     if not is_admin(upd.effective_user.id): return
@@ -510,7 +556,6 @@ async def admin_action(upd, ctx):
         except: pass
         db_run("INSERT INTO transactions (user_id,tx_type,amount,status) VALUES (?,?,?,?)",(uid,'trade_complete',order['amount_usdt'],'completed'))
 
-# ✅ زر حالة التاجر يعمل فوراً بدون تعقيد
 async def admin_trader_status(upd, ctx):
     if not is_admin(upd.effective_user.id): return
     if upd.message.text == "❌ إلغاء": return await upd.message.reply_text("✅ تم الإلغاء", reply_markup=kb_admin())
@@ -524,6 +569,7 @@ async def admin_add_pay_n(upd, ctx):
     if not is_admin(upd.effective_user.id): return
     ctx.user_data['name'] = upd.message.text.strip()
     await upd.message.reply_text("📋 أدخل التفاصيل (آيدي/حساب):", reply_markup=kb_cancel()); return 70
+
 async def admin_add_pay_d(upd, ctx):
     db_run("INSERT INTO payment_methods (name,details) VALUES (?,?)", (ctx.user_data['name'], upd.message.text.strip()))
     await upd.message.reply_text("✅ تمت إضافة طريقة الدفع", reply_markup=kb_admin()); ctx.user_data.clear(); return ConversationHandler.END
@@ -532,6 +578,7 @@ async def admin_add_recv_n(upd, ctx):
     if not is_admin(upd.effective_user.id): return
     ctx.user_data['name'] = upd.message.text.strip()
     await upd.message.reply_text("📋 أدخل التفاصيل:", reply_markup=kb_cancel()); return 71
+
 async def admin_add_recv_d(upd, ctx):
     db_run("INSERT INTO receive_methods (name,details) VALUES (?,?)", (ctx.user_data['name'], upd.message.text.strip()))
     await upd.message.reply_text("✅ تمت إضافة طريقة الاستلام", reply_markup=kb_admin()); ctx.user_data.clear(); return ConversationHandler.END
@@ -540,14 +587,22 @@ async def admin_set_val(upd, ctx, key, label):
     if not is_admin(upd.effective_user.id): return
     t = upd.message.text.strip()
     if t == "❌ إلغاء": return await upd.message.reply_text("✅ تم الإلغاء", reply_markup=kb_admin())
-    try: v=float(t.replace('،','.')); set_s(key,v); await upd.message.reply_text(f"✅ تم تحديث {label} إلى {fmt(v)}", reply_markup=kb_admin()); return ConversationHandler.END
-    except: return await upd.message.reply_text("❌ أدخل رقماً صحيحاً")
+    try:
+        v = float(t.replace('،', '.'))
+        set_s(key, v)
+        await upd.message.reply_text(f"✅ تم تحديث {label} إلى {fmt(v)}", reply_markup=kb_admin())
+        return ConversationHandler.END
+    except:
+        return await upd.message.reply_text("❌ أدخل رقماً صحيحاً")
 
 # ════════════════════════════════════════════════════════════
-#                    🚀 التشغيل الرئيسي (نظيف 100%)
+#                    🚀 التشغيل الرئيسي
 # ════════════════════════════════════════════════════════════
 def main():
+    print("🚀 جاري تهيئة البوت...")
     init_db()
+    print("✅ قاعدة البيانات جاهزة")
+    
     app = Application.builder().token(BOT_TOKEN).build()
     c_filter = filters.Regex(r"^(❌ إلغاء|🔙 الرئيسية|/cancel)$")
     
@@ -561,7 +616,7 @@ def main():
                 BUY_STEPS['WAIT_PAY']:[CallbackQueryHandler(global_inline_handler)],
                 BUY_STEPS['WAIT_RECV']:[MessageHandler(filters.PHOTO, buy_proof), CallbackQueryHandler(global_inline_handler)],
                 BUY_STEPS['WAIT_ACC']:[MessageHandler(filters.TEXT&~filters.COMMAND, buy_acc)],
-                BUY_STEPS['WAIT_ACC']+1:[MessageHandler(filters.TEXT&~filters.COMMAND, buy_finish)]}, 
+                BUY_STEPS['DONE']:[MessageHandler(filters.TEXT&~filters.COMMAND, buy_finish)]}, 
         fallbacks=[MessageHandler(c_filter, cancel_flow)]))
                 
     # بيع
@@ -605,8 +660,8 @@ def main():
     app.add_handler(MessageHandler(filters.Regex(r"^🗃️ المخزون$"), show_inventory))
     app.add_handler(MessageHandler(filters.Regex(r"^📊 السوق$"), show_exchange))
     
-    logger.info("🚀 البوت يعمل - Version 10.3 STABLE")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    print("📡 جاري الاتصال بـ Telegram (Polling)...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
