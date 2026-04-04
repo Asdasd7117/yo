@@ -1,1 +1,5 @@
-python-telegram-bot>=20.6
+python-telegram-bot==20.8
+sqlite3
+flask
+gunicorn
+requests
