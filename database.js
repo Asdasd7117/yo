@@ -3,11 +3,12 @@ const fs = require('fs');
 const path = require('path');
 
 const DB_PATH = path.join(__dirname, 'links.db');
+
 let db;
 
 async function initDB() {
   const SQL = await initSqlJs();
-  
+
   if (fs.existsSync(DB_PATH)) {
     const buffer = fs.readFileSync(DB_PATH);
     db = new SQL.Database(buffer);
@@ -44,6 +45,7 @@ async function initDB() {
 }
 
 function saveDB() {
+  if (!db) return;
   const data = db.export();
   const buffer = Buffer.from(data);
   fs.writeFileSync(DB_PATH, buffer);
@@ -58,8 +60,11 @@ function get(sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
   if (stmt.step()) {
-    return stmt.getAsObject();
+    const row = stmt.getAsObject();
+    stmt.free();
+    return row;
   }
+  stmt.free();
   return null;
 }
 
@@ -70,6 +75,7 @@ function all(sql, params = []) {
   while (stmt.step()) {
     results.push(stmt.getAsObject());
   }
+  stmt.free();
   return results;
 }
 
