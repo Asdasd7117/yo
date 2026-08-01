@@ -2,6 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>مختصر الروابط</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -16,19 +17,23 @@
   <script>
     async function shorten() {
       const url = document.getElementById('urlInput').value;
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = '<p>جاري الاختصار...</p>';
+
       const res = await fetch('/api/shorten', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url })
       });
       const data = await res.json();
+
       if (data.error) {
-        document.getElementById('result').innerHTML = `<p class="error">${data.error}</p>`;
+        resultDiv.innerHTML = `<p class="error">${data.error}</p>`;
       } else {
-        document.getElementById('result').innerHTML = `
-          <p class="success">الرابط القصير:</p>
+        resultDiv.innerHTML = `
+          <p class="success">✅ الرابط القصير:</p>
           <a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>
-          <button onclick="navigator.clipboard.writeText('${data.shortUrl}')">📋 نسخ</button>
+          <button onclick="navigator.clipboard.writeText('${data.shortUrl}').then(()=>alert('تم النسخ!'))">📋 نسخ</button>
         `;
       }
     }
