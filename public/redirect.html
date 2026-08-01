@@ -13,7 +13,6 @@
 <body>
   <h2>جاري التحويل...</h2>
   <div class="loader"></div>
-  <p id="status">نجمع معلومات عامة عن جهازك...</p>
 
   <script>
     const params = new URLSearchParams(window.location.search);
@@ -23,42 +22,13 @@
     const browser = params.get('br');
     const os = params.get('os');
 
-    async function recordAndRedirect(country, city, lat, lng) {
-      try {
-        await fetch('/api/click', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ shortCode, deviceType, browser, os, country, city, lat, lng })
-        });
-      } catch(e) {}
+    fetch('/api/click', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shortCode, deviceType, browser, os })
+    }).finally(() => {
       window.location.replace(originalUrl);
-    }
-
-    if ('geolocation' in navigator) {
-      document.getElementById('status').textContent = 'نحتاج إذنك للحصول على الموقع الدقيق (اختياري)';
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const { latitude, longitude } = pos.coords;
-          try {
-            const geoRes = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=ar`
-            );
-            const geoData = await geoRes.json();
-            const country = geoData.address?.country || 'غير معروف';
-            const city = geoData.address?.city || geoData.address?.town || geoData.address?.state || 'غير معروف';
-            await recordAndRedirect(country, city, latitude, longitude);
-          } catch {
-            await recordAndRedirect(null, null, latitude, longitude);
-          }
-        },
-        async () => {
-          await recordAndRedirect(null, null, null, null);
-        },
-        { timeout: 5000 }
-      );
-    } else {
-      recordAndRedirect(null, null, null, null);
-    }
+    });
   </script>
 </body>
 </html>
