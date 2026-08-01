@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>لوحة التحكم</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container wide">
+    <h1>📊 لوحة التحكم</h1>
+    <a href="/" class="back">← رجوع</a>
+    <table id="linksTable">
+      <thead>
+        <tr>
+          <th>الرابط القصير</th>
+          <th>الرابط الأصلي</th>
+          <th>النقرات</th>
+          <th>تاريخ الإنشاء</th>
+          <th>إجراءات</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div id="details"></div>
+  </div>
+
+  <script>
+    async function loadLinks() {
+      const res = await fetch('/api/dashboard');
+      const links = await res.json();
+      const tbody = document.querySelector('#linksTable tbody');
+      tbody.innerHTML = links.map(l => `
+        <tr>
+          <td><a href="/${l.short_code}" target="_blank">/${l.short_code}</a></td>
+          <td class="url-cell">${l.original_url}</td>
+          <td><strong>${l.clicks_count}</strong></td>
+          <td>${new Date(l.created_at).toLocaleString('ar')}</td>
+          <td><button onclick="showDetails('${l.short_code}')">📈 التفاصيل</button></td>
+        </tr>
+      `).join('');
+    }
+
+    async function showDetails(code) {
+      const res = await fetch(`/api/clicks/${code}`);
+      const data = await res.json();
+      const details = document.getElementById('details');
+      if (data.clicks.length === 0) {
+        details.innerHTML = '<p>لا توجد نقرات بعد.</p>';
+        return;
+      }
+      details.innerHTML = `
+        <h3>تفاصيل نقرات /${code}</h3>
+        <table>
+          <thead>
+            <tr><th>الدولة</th><th>المدينة</th><th>الجهاز</th><th>المتصفح</th><th>النظام</th><th>الإحداثيات</th><th>الوقت</th></tr>
+          </thead>
+          <tbody>
+            ${data.clicks.map(c => `
+              <tr>
+                <td>${c.country || '-'}</td>
+                <td>${c.city || '-'}</td>
+                <td>${c.device_type}</td>
+                <td>${c.browser}</td>
+                <td>${c.os}</td>
+                <td>${c.lat && c.lng ? `<a href="https://maps.google.com/?q=${c.lat},${c.lng}" target="_blank">${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}</a>` : '-'}</td>
+                <td>${new Date(c.clicked_at).toLocaleString('ar')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    loadLinks();
+  </script>
+</body>
+</html>
