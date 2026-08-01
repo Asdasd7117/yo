@@ -1,32 +1,23 @@
 const express = require('express');
+const fetch = require('node-fetch');
 const { nanoid } = require('nanoid');
 const UAParser = require('ua-parser-js');
-const fetch = require('node-fetch');
-const path = require('path');
 const db = require('./database');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// تهيئة قاعدة البيانات ثم تشغيل السيرفر
+// تهيئة قاعدة البيانات
 db.initDB().then(() => {
-  app.listen(process.env.PORT || 3000, () => {
-    console.log('✅ شغّال على المنفذ', process.env.PORT || 3000);
-  });
-}).catch(err => {
-  console.error('❌ فشل تهيئة قاعدة البيانات:', err);
-  process.exit(1);
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`✅ شغّال على المنفذ ${PORT}`));
 });
 
 // 🏠 الصفحة الرئيسية
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-//  لوحة التحكم
-app.get('/dashboard.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
 // 🔗 إنشاء رابط قصير
@@ -50,7 +41,7 @@ app.post('/api/shorten', (req, res) => {
   });
 });
 
-// 📊 جلب كل الروابط مع عدد النقرات
+// 📊 لوحة التحكم
 app.get('/api/dashboard', (req, res) => {
   const links = db.all(`
     SELECT l.id, l.short_code, l.original_url, l.created_at,
@@ -77,7 +68,7 @@ app.get('/api/clicks/:shortCode', (req, res) => {
   res.json({ link, clicks });
 });
 
-// 📝 تسجيل النقرة + الحصول على الموقع من IP (بدون إذن)
+// 📝 تسجيل النقرة + الحصول على الموقع من IP
 app.post('/api/click', async (req, res) => {
   const { shortCode, deviceType, browser, os } = req.body;
 
@@ -85,7 +76,7 @@ app.post('/api/click', async (req, res) => {
   if (!link) return res.status(404).json({ error: 'رابط غير موجود' });
 
   // الحصول على IP الحقيقي
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip;
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip;
 
   let country = null, city = null, lat = null, lng = null;
 
@@ -100,7 +91,7 @@ app.post('/api/click', async (req, res) => {
       lng = geoData.lon;
     }
   } catch (err) {
-    console.error('خطأ في تحديد الموقع:', err.message);
+    console.error('Geocoding error:', err);
   }
 
   db.run(`
@@ -111,12 +102,12 @@ app.post('/api/click', async (req, res) => {
   res.json({ success: true });
 });
 
-// 🚀 صفحة إعادة التوجيه الوسيطة
+//  صفحة التحويل
 app.get('/redirect.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'redirect.html'));
 });
 
-// 🔄 معالجة الروابط القصيرة
+// 🔄 إعادة التوجيه
 app.get('/:shortCode', (req, res) => {
   const link = db.get('SELECT * FROM links WHERE short_code = ?', [req.params.shortCode]);
   if (!link) return res.status(404).send('الرابط غير موجود');
