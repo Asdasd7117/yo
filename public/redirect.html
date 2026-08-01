@@ -13,7 +13,7 @@
 <body>
   <h2>جاري التحويل...</h2>
   <div class="loader"></div>
-  <p id="status">نجمع معلومات عامة عن جهازك (بدون IP)...</p>
+  <p id="status">نجمع معلومات عامة عن جهازك...</p>
 
   <script>
     const params = new URLSearchParams(window.location.search);
@@ -24,21 +24,21 @@
     const os = params.get('os');
 
     async function recordAndRedirect(country, city, lat, lng) {
-      await fetch('/api/click', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shortCode, deviceType, browser, os, country, city, lat, lng })
-      });
+      try {
+        await fetch('/api/click', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shortCode, deviceType, browser, os, country, city, lat, lng })
+        });
+      } catch(e) {}
       window.location.replace(originalUrl);
     }
 
-    // محاولة الحصول على الموقع الدقيق (اختياري - بإذن المستخدم)
     if ('geolocation' in navigator) {
       document.getElementById('status').textContent = 'نحتاج إذنك للحصول على الموقع الدقيق (اختياري)';
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
           const { latitude, longitude } = pos.coords;
-          // Reverse geocoding عبر OpenStreetMap (مجاني، بدون API key)
           try {
             const geoRes = await fetch(
               `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=ar`
@@ -52,7 +52,6 @@
           }
         },
         async () => {
-          // المستخدم رفض → نكمل بدون موقع
           await recordAndRedirect(null, null, null, null);
         },
         { timeout: 5000 }
