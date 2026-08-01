@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>جاري التحويل...</title>
+  <style>
+    body { font-family: Arial; text-align: center; padding: 50px; background: #f5f5f5; }
+    .loader { border: 4px solid #ddd; border-top: 4px solid #3498db; border-radius: 50%;
+              width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h2>جاري التحويل...</h2>
+  <div class="loader"></div>
+  <p id="status">نجمع معلومات عامة عن جهازك (بدون IP)...</p>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const shortCode = params.get('code');
+    const originalUrl = params.get('url');
+    const deviceType = params.get('dt');
+    const browser = params.get('br');
+    const os = params.get('os');
+
+    async function recordAndRedirect(country, city, lat, lng) {
+      await fetch('/api/click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shortCode, deviceType, browser, os, country, city, lat, lng })
+      });
+      window.location.replace(originalUrl);
+    }
+
+    // محاولة الحصول على الموقع الدقيق (اختياري - بإذن المستخدم)
+    if ('geolocation' in navigator) {
+      document.getElementById('status').textContent = 'نحتاج إذنك للحصول على الموقع الدقيق (اختياري)';
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude } = pos.coords;
+          // Reverse geocoding عبر OpenStreetMap (مجاني، بدون API key)
+          try {
+            const geoRes = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=ar`
+            );
+            const geoData = await geoRes.json();
+            const country = geoData.address?.country || 'غير معروف';
+            const city = geoData.address?.city || geoData.address?.town || geoData.address?.state || 'غير معروف';
+            await recordAndRedirect(country, city, latitude, longitude);
+          } catch {
+            await recordAndRedirect(null, null, latitude, longitude);
+          }
+        },
+        async () => {
+          // المستخدم رفض → نكمل بدون موقع
+          await recordAndRedirect(null, null, null, null);
+        },
+        { timeout: 5000 }
+      );
+    } else {
+      recordAndRedirect(null, null, null, null);
+    }
+  </script>
+</body>
+</html>
