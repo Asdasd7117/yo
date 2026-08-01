@@ -3,13 +3,11 @@ const fs = require('fs');
 const path = require('path');
 
 const DB_PATH = path.join(__dirname, 'links.db');
-
 let db;
 
 async function initDB() {
   const SQL = await initSqlJs();
   
-  // تحميل قاعدة البيانات إذا كانت موجودة
   if (fs.existsSync(DB_PATH)) {
     const buffer = fs.readFileSync(DB_PATH);
     db = new SQL.Database(buffer);
@@ -17,7 +15,6 @@ async function initDB() {
     db = new SQL.Database();
   }
 
-  // إنشاء الجداول
   db.run(`
     CREATE TABLE IF NOT EXISTS links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +49,6 @@ function saveDB() {
   fs.writeFileSync(DB_PATH, buffer);
 }
 
-// دوال مساعدة
 function run(sql, params = []) {
   db.run(sql, params);
   saveDB();
