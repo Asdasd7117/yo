@@ -1,27 +1,80 @@
-const Database = require('better-sqlite3');
-const db = new Database('links.db');
+const initSqlJs = require('sql.js');
+const fs = require('fs');
+const path = require('path');
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS links (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    short_code TEXT UNIQUE NOT NULL,
-    original_url TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+const DB_PATH = path.join(__dirname, 'links.db');
 
-  CREATE TABLE IF NOT EXISTS clicks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    link_id INTEGER NOT NULL,
-    country TEXT,
-    city TEXT,
-    device_type TEXT,
-    browser TEXT,
-    os TEXT,
-    lat REAL,
-    lng REAL,
-    clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(link_id) REFERENCES links(id)
-  );
-`);
+let db;
 
-module.exports = db;
+async function initDB() {
+  const SQL = await initSqlJs();
+  
+  // تحميل قاعدة البيانات إذا كانت موجودة
+  if (fs.existsSync(DB_PATH)) {
+    const buffer = fs.readFileSync(DB_PATH);
+    db = new SQL.Database(buffer);
+  } else {
+    db = new SQL.Database();
+  }
+
+  // إنشاء الجداول
+  db.run(`
+    CREATE TABLE IF NOT EXISTS links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      short_code TEXT UNIQUE NOT NULL,
+      original_url TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS clicks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      link_id INTEGER NOT NULL,
+      country TEXT,
+      city TEXT,
+      device_type TEXT,
+      browser TEXT,
+      os TEXT,
+      lat REAL,
+      lng REAL,
+      clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  saveDB();
+  console.log('✅ قاعدة البيانات جاهزة');
+}
+
+function saveDB() {
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  fs.writeFileSync(DB_PATH, buffer);
+}
+
+// دوال مساعدة
+function run(sql, params = []) {
+  db.run(sql, params);
+  saveDB();
+}
+
+function get(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  if (stmt.step()) {
+    return stmt.getAsObject();
+  }
+  return null;
+}
+
+function all(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  const results = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  return results;
+}
+
+module.exports = { initDB, run, get, all };
