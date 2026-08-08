@@ -25,24 +25,40 @@
       text-align: center;
     }
     .icon {
-      font-size: 60px;
+      font-size: 70px;
       margin-bottom: 20px;
-      animation: bounce 1s infinite;
-    }
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
     }
     h2 {
       color: #2c3e50;
       margin-bottom: 15px;
-      font-size: 24px;
+      font-size: 22px;
     }
     p {
       color: #7f8c8d;
-      line-height: 1.6;
-      margin-bottom: 20px;
+      line-height: 1.7;
+      margin-bottom: 25px;
       font-size: 15px;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: transform 0.2s;
+    }
+    .btn:hover { transform: scale(1.03); }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .btn-secondary {
+      background: #ecf0f1;
+      color: #7f8c8d;
     }
     .loader {
       border: 4px solid #f3f3f3;
@@ -72,20 +88,46 @@
       color: #95a5a6;
       margin-top: 10px;
     }
+    .hidden { display: none !important; }
+    .info-box {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #856404;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon" id="icon">🌍</div>
-    <h2 id="title">جاري تحضير الرابط...</h2>
-    <p id="message">نحتاج تحديد موقعك لتحسين الخدمة. سيظهر لك طلب إذن من المتصفح.</p>
-    
-    <div class="progress">
-      <div class="progress-bar" id="progressBar"></div>
+    <div class="icon" id="icon">📍</div>
+    <h2 id="title">اختر طريقة التحويل</h2>
+    <p id="message">للحصول على إحصائيات دقيقة، نحتاج تحديد موقعك.</p>
+
+    <!-- الأزرار -->
+    <div id="choiceButtons">
+      <button class="btn btn-primary" onclick="useGPS()">
+        🎯 السماح بالموقع الدقيق (GPS)
+      </button>
+      <button class="btn btn-secondary" onclick="useIP()">
+        ⏭️ تخطي (موقع تقريبي فقط)
+      </button>
+      <div class="info-box">
+        💡 الموقع الدقيق = دقة بضعة أمتار<br>
+        الموقع التقريبي = على مستوى المدينة فقط
+      </div>
     </div>
-    
-    <div class="loader" id="loader"></div>
-    <div class="status" id="statusText">جاري بدء العملية...</div>
+
+    <!-- شاشة التحميل -->
+    <div id="loadingScreen" class="hidden">
+      <div class="loader"></div>
+      <div class="progress">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="status" id="statusText">جاري...</div>
+    </div>
   </div>
 
   <script>
@@ -104,12 +146,9 @@
       document.getElementById('statusText').textContent = text;
     }
 
-    function updateTitle(text) {
-      document.getElementById('title').textContent = text;
-    }
-
-    function updateMessage(text) {
-      document.getElementById('message').textContent = text;
+    function showLoading() {
+      document.getElementById('choiceButtons').classList.add('hidden');
+      document.getElementById('loadingScreen').classList.remove('hidden');
     }
 
     async function sendClick(lat, lng, country, city, source) {
@@ -123,68 +162,81 @@
           })
         });
       } catch(e) { console.error(e); }
-      
+
       updateProgress(100);
-      updateStatus('جاري التحويل...');
-      
+      updateStatus('✅ تم! جاري التحويل...');
+
       setTimeout(() => {
         window.location.replace(originalUrl);
-      }, 800);
+      }, 600);
     }
 
-    async function getLocation() {
-      updateProgress(20);
-      updateStatus('طلب إذن الموقع من المتصفح...');
+    // 🎯 خيار 1: GPS الدقيق
+    async function useGPS() {
+      showLoading();
+      updateProgress(10);
+      updateStatus('⏳ طلب إذن الموقع من المتصفح...');
 
-      if ('geolocation' in navigator) {
-        try {
-          const position = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 10000,
-              maximumAge: 0
-            });
+      if (!('geolocation' in navigator)) {
+        updateStatus(' المتصفح لا يدعم GPS، نستخدم IP...');
+        await sendClick(null, null, null, null, 'ip');
+        return;
+      }
+
+      try {
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
           });
+        });
 
-          updateProgress(50);
-          updateStatus('تم الحصول على الموقع، جاري تحديد التفاصيل...');
+        updateProgress(40);
+        updateStatus('✅ تم الحصول على الإحداثيات، جاري تحديد المدينة...');
 
-          const { latitude, longitude } = position.coords;
+        const { latitude, longitude } = position.coords;
 
-          // Reverse geocoding للحصول على اسم المدينة والدولة
-          try {
-            const geoRes = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=ar&zoom=10`
-            );
-            const geoData = await geoRes.json();
-            const country = geoData.address?.country || null;
-            const city = geoData.address?.city || geoData.address?.town || geoData.address?.state || null;
+        // Reverse geocoding من OpenStreetMap
+        try {
+          const geoRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=ar&zoom=14`
+          );
+          const geoData = await geoRes.json();
+          const country = geoData.address?.country || null;
+          const city = geoData.address?.city ||
+                       geoData.address?.town ||
+                       geoData.address?.village ||
+                       geoData.address?.state || null;
 
-            updateProgress(80);
-            updateStatus('تم تحديد الموقع بنجاح ✓');
-            document.getElementById('icon').textContent = '✅';
+          updateProgress(80);
+          updateStatus(`📍 ${country} - ${city || 'غير معروف'}`);
+          document.getElementById('icon').textContent = '✅';
+          document.getElementById('title').textContent = 'تم تحديد موقعك!';
 
-            await sendClick(latitude, longitude, country, city, 'gps');
-          } catch {
-            await sendClick(latitude, longitude, null, null, 'gps');
-          }
-
+          await sendClick(latitude, longitude, country, city, 'gps');
         } catch (err) {
-          // المستخدم رفض أو فشل GPS → نستخدم IP
-          updateStatus('تم رفض إذن الموقع، نستخدم الموقع التقريبي...');
-          document.getElementById('icon').textContent = '📍';
-          await sendClick(null, null, null, null, 'ip');
+          // إذا فشل Nominatim، نرسل الإحداثيات فقط
+          await sendClick(latitude, longitude, null, null, 'gps');
         }
-      } else {
-        updateStatus('المتصفح لا يدعم تحديد الموقع، نستخدم IP...');
+
+      } catch (err) {
+        // المستخدم رفض أو فشل
+        updateStatus('⚠️ تم رفض الإذن، نستخدم الموقع التقريبي...');
+        document.getElementById('icon').textContent = '📍';
         await sendClick(null, null, null, null, 'ip');
       }
     }
 
-    // 🚀 ابدأ طلب الإذن فوراً عند تحميل الصفحة
-    window.addEventListener('load', () => {
-      setTimeout(getLocation, 500);
-    });
+    // ⏭️ خيار 2: IP التقريبي
+    async function useIP() {
+      showLoading();
+      updateProgress(30);
+      updateStatus('🌐 جاري تحديد الموقع التقريبي...');
+      document.getElementById('icon').textContent = '🌐';
+
+      await sendClick(null, null, null, null, 'ip');
+    }
   </script>
 </body>
 </html>
