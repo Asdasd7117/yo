@@ -115,7 +115,7 @@
         ⏭️ تخطي (موقع تقريبي فقط)
       </button>
       <div class="info-box">
-        💡 الموقع الدقيق = دقة بضعة أمتار<br>
+        💡 الموقع الدقيق = دقة عالية عبر الشبكة<br>
         الموقع التقريبي = على مستوى المدينة فقط
       </div>
     </div>
@@ -167,18 +167,20 @@
       updateStatus('✅ تم! جاري التحويل...');
 
       setTimeout(() => {
-        window.location.replace(originalUrl);
+        if (originalUrl) {
+          window.location.replace(originalUrl);
+        }
       }, 600);
     }
 
-    // 🎯 خيار 1: GPS الدقيق
+    // 🎯 خيار 1: الموقع المحدث
     async function useGPS() {
       showLoading();
       updateProgress(10);
       updateStatus('⏳ طلب إذن الموقع من المتصفح...');
 
       if (!('geolocation' in navigator)) {
-        updateStatus(' المتصفح لا يدعم GPS، نستخدم IP...');
+        updateStatus('المتصفح لا يدعم تحديد الموقع، نستخدم IP...');
         await sendClick(null, null, null, null, 'ip');
         return;
       }
@@ -186,8 +188,8 @@
       try {
         const position = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 15000,
+            enableHighAccuracy: false, // تم التعديل لتجنب فشل الأقمار الصناعية داخل المباني
+            timeout: 20000,            // زيادة المهلة إلى 20 ثانية
             maximumAge: 0
           });
         });
@@ -216,13 +218,15 @@
 
           await sendClick(latitude, longitude, country, city, 'gps');
         } catch (err) {
-          // إذا فشل Nominatim، نرسل الإحداثيات فقط
           await sendClick(latitude, longitude, null, null, 'gps');
         }
 
       } catch (err) {
-        // المستخدم رفض أو فشل
-        updateStatus('⚠️ تم رفض الإذن، نستخدم الموقع التقريبي...');
+        let errorMsg = '⚠️ تعذر تحديد الموقع، نستخدم الموقع التقريبي...';
+        if (err.code === 1) {
+          errorMsg = '⚠️ تم رفض إذن الموقع من المتصفح...';
+        }
+        updateStatus(errorMsg);
         document.getElementById('icon').textContent = '📍';
         await sendClick(null, null, null, null, 'ip');
       }
