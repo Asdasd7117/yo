@@ -9,7 +9,7 @@
 <body>
   <div class="container wide">
     <div class="header">
-      <h1> لوحة التحكم</h1>
+      <h1>📊 لوحة التحكم</h1>
       <a href="/" class="btn-back">← رجوع</a>
     </div>
 
@@ -62,7 +62,7 @@
           <td>${new Date(link.created_at).toLocaleString('ar-SA')}</td>
           <td>
             <button onclick="showDetails('${link.short_code}')" class="btn-small">📈 التفاصيل</button>
-            <button onclick="copyLink('${link.short_code}')" class="btn-small"></button>
+            <button onclick="copyLink('${link.short_code}')" class="btn-small">📋 نسخ</button>
           </td>
         </tr>
       `).join('');
@@ -99,55 +99,54 @@
           return;
         }
 
-        const countries = {}, cities = {}, devices = {}, browsers = {}, osList = {};
+        const countries = {}, cities = {}, devices = {}, browsers = {}, osList = {}, sources = {};
         data.clicks.forEach(c => {
           if (c.country) countries[c.country] = (countries[c.country] || 0) + 1;
           if (c.city) cities[c.city] = (cities[c.city] || 0) + 1;
           devices[c.device_type] = (devices[c.device_type] || 0) + 1;
           browsers[c.browser] = (browsers[c.browser] || 0) + 1;
           osList[c.os] = (osList[c.os] || 0) + 1;
+          
+          // تحديد مصدر الموقع (GPS أو IP)
+          const src = c.source === 'gps' ? '📍 GPS (دقيق)' : '🌐 IP (تقريبي)';
+          sources[src] = (sources[src] || 0) + 1;
         });
 
         detailsDiv.innerHTML = `
           <div class="details-header">
-            <h3> تفاصيل النقرات - /${shortCode}</h3>
+            <h3>📊 تفاصيل النقرات - /${shortCode}</h3>
             <button onclick="closeDetails()" class="btn-close">✕</button>
           </div>
 
           <div class="stats-grid">
             <div class="stat-box">
               <h4>🌍 الدول</h4>
-              ${Object.entries(countries).map(([c,n]) => `
-                <div class="stat-item"><span>${c}</span><strong>${n}</strong></div>
-              `).join('')}
+              ${Object.entries(countries).map(([c,n]) => `<div class="stat-item"><span>${c}</span><strong>${n}</strong></div>`).join('')}
             </div>
 
             <div class="stat-box">
               <h4>🏙️ المدن</h4>
-              ${Object.entries(cities).map(([c,n]) => `
-                <div class="stat-item"><span>${c}</span><strong>${n}</strong></div>
-              `).join('')}
+              ${Object.entries(cities).map(([c,n]) => `<div class="stat-item"><span>${c}</span><strong>${n}</strong></div>`).join('')}
             </div>
 
             <div class="stat-box">
               <h4>📱 الأجهزة</h4>
-              ${Object.entries(devices).map(([d,n]) => `
-                <div class="stat-item"><span>${d}</span><strong>${n}</strong></div>
-              `).join('')}
+              ${Object.entries(devices).map(([d,n]) => `<div class="stat-item"><span>${d}</span><strong>${n}</strong></div>`).join('')}
             </div>
 
             <div class="stat-box">
               <h4>🌐 المتصفحات</h4>
-              ${Object.entries(browsers).map(([b,n]) => `
-                <div class="stat-item"><span>${b}</span><strong>${n}</strong></div>
-              `).join('')}
+              ${Object.entries(browsers).map(([b,n]) => `<div class="stat-item"><span>${b}</span><strong>${n}</strong></div>`).join('')}
             </div>
 
             <div class="stat-box">
               <h4>💻 أنظمة التشغيل</h4>
-              ${Object.entries(osList).map(([o,n]) => `
-                <div class="stat-item"><span>${o}</span><strong>${n}</strong></div>
-              `).join('')}
+              ${Object.entries(osList).map(([o,n]) => `<div class="stat-item"><span>${o}</span><strong>${n}</strong></div>`).join('')}
+            </div>
+
+            <div class="stat-box">
+              <h4>🎯 دقة الموقع</h4>
+              ${Object.entries(sources).map(([s,n]) => `<div class="stat-item"><span>${s}</span><strong>${n}</strong></div>`).join('')}
             </div>
           </div>
 
@@ -162,6 +161,7 @@
                 <th>الجهاز</th>
                 <th>المتصفح</th>
                 <th>النظام</th>
+                <th>🎯 الدقة</th>
                 <th>🗺️ الموقع</th>
                 <th>الوقت</th>
               </tr>
@@ -180,10 +180,13 @@
                   <td>${c.browser || '-'}</td>
                   <td>${c.os || '-'}</td>
                   <td>
+                    ${c.source === 'gps' ? 
+                      `<span style="color:#27ae60;font-weight:bold">📍 GPS<br><small>±${Math.round(c.accuracy)}م</small></span>` : 
+                      `<span style="color:#e67e22">🌐 IP<br><small>تقريبي</small></span>`}
+                  </td>
+                  <td>
                     ${c.lat && c.lng ? 
-                      `<a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" class="map-link">
-                         📍 عرض
-                      </a>
+                      `<a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" class="map-link">📍 عرض</a>
                       <br><small>(${c.lat.toFixed(4)}, ${c.lng.toFixed(4)})</small>` : 
                       '<span style="color:#999">غير متوفر</span>'}
                   </td>
@@ -194,7 +197,7 @@
           </table>
 
           ${data.clicks.some(c => c.lat && c.lng) ? `
-            <h4 style="margin-top:30px;">🗺️ خريطة جميع المواقع</h4>
+            <h4 style="margin-top:30px;">🗺️ خريطة المواقع</h4>
             <div class="map-container">
               <iframe 
                 width="100%" 
@@ -203,7 +206,7 @@
                 scrolling="no" 
                 marginheight="0" 
                 marginwidth="0" 
-                src="https://www.google.com/maps?q=${data.clicks[0].lat},${data.clicks[0].lng}&z=5&output=embed">
+                src="https://www.google.com/maps?q=${data.clicks[0].lat},${data.clicks[0].lng}&z=10&output=embed">
               </iframe>
             </div>
           ` : ''}
