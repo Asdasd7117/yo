@@ -13,34 +13,54 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
-    }
-    .loader-container {
-      text-align: center;
       color: white;
+      text-align: center;
+      padding: 20px;
     }
+    .loader-container { max-width: 400px; }
     .spinner {
-      width: 60px;
-      height: 60px;
+      width: 60px; height: 60px;
       border: 4px solid rgba(255,255,255,0.3);
       border-top: 4px solid white;
       border-radius: 50%;
       margin: 0 auto 20px;
       animation: spin 1s linear infinite;
     }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
     .loading-text { font-size: 18px; margin-bottom: 10px; }
-    .redirecting { font-size: 14px; opacity: 0.8; }
+    .redirecting { font-size: 14px; opacity: 0.8; margin-bottom: 20px; }
+    .location-box {
+      background: rgba(255,255,255,0.15);
+      padding: 15px;
+      border-radius: 10px;
+      margin: 15px 0;
+      font-size: 14px;
+    }
+    .location-box.success { background: rgba(46, 204, 113, 0.3); }
+    .location-box.warning { background: rgba(241, 196, 15, 0.3); }
+    .location-box.error { background: rgba(231, 76, 60, 0.3); }
+    .accuracy { font-size: 12px; opacity: 0.8; margin-top: 5px; }
+    .btn-allow {
+      background: white;
+      color: #667eea;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .btn-allow:hover { background: #f0f0f0; }
   </style>
 </head>
 <body>
   <div class="loader-container">
-    <div class="spinner"></div>
-    <div class="loading-text">جاري التحميل...</div>
-    <div class="redirecting">سيتم تحويلك خلال لحظات</div>
+    <div class="spinner" id="spinner"></div>
+    <div class="loading-text" id="loadingText">جاري التحميل...</div>
+    <div class="redirecting" id="redirectText">سيتم تحويلك خلال لحظات</div>
+    
+    <div id="locationStatus"></div>
   </div>
 
   <script>
@@ -51,15 +71,129 @@
     const browser = params.get('br');
     const os = params.get('os');
 
-    fetch('/api/click', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shortCode, deviceType, browser, os })
-    }).finally(() => {
+    const loadingText = document.getElementById('loadingText');
+    const locationStatus = document.getElementById('locationStatus');
+    const spinner = document.getElementById('spinner');
+
+    // بيانات الموقع
+    let locationData = {
+      lat: null,
+      lng: null,
+      country: null,
+      city: null,
+      accuracy: null,
+      source: null // 'gps' أو 'ip'
+    };
+
+    // دالة إرسال البيانات والتحويل
+    async function sendAndRedirect() {
+      try {
+        await fetch('/api/click', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            shortCode, 
+            deviceType, 
+            browser, 
+            os,
+            lat: locationData.lat,
+            lng: locationData.lng,
+            country: locationData.country,
+            city: locationData.city,
+            accuracy: locationData.accuracy,
+            source: locationData.source
+          })
+        });
+      } catch (e) {
+        console.error('Tracking error:', e);
+      }
+      
       setTimeout(() => {
         window.location.replace(originalUrl);
-      }, 1000);
-    });
+      }, 800);
+    }
+
+    // محاولة الحصول على GPS من المتصفح
+    function tryGPS() {
+      return new Promise((resolve) => {
+        if (!('geolocation' in navigator)) {
+          resolve(false);
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            locationData.lat = position.coords.latitude;
+            locationData.lng = position.coords.longitude;
+            locationData.accuracy = position.coords.accuracy;
+            locationData.source = 'gps';
+            
+            locationStatus.innerHTML = `
+              <div class="location-box success">
+                ✅ تم تحديد موقعك بدقة GPS
+                <div class="accuracy">الدقة: ±${Math.round(position.coords.accuracy)} متر</div>
+              </div>
+            `;
+            resolve(true);
+          },
+          (error) => {
+            console.log('GPS rejected:', error.message);
+            resolve(false);
+          },
+          { 
+            enableHighAccuracy: true,
+            timeout: 8000,
+            maximumAge: 0
+          }
+        );
+      });
+    }
+
+    // الحصول على الموقع من IP (عبر السيرفر)
+    async function getLocationFromIP() {
+      try {
+        const res = await fetch('/api/get-location');
+        const data = await res.json();
+        
+        if (data && data.country) {
+          locationData.country = data.country;
+          locationData.city = data.city;
+          locationData.lat = data.lat;
+          locationData.lng = data.lng;
+          locationData.source = 'ip';
+          
+          locationStatus.innerHTML = `
+            <div class="location-box warning">
+               الموقع التقريبي (من IP)
+              <div class="accuracy">${data.country} - ${data.city || 'غير محدد'}</div>
+            </div>
+          `;
+        }
+      } catch (e) {
+        console.error('IP location error:', e);
+      }
+    }
+
+    // التنفيذ الرئيسي
+    async function main() {
+      loadingText.textContent = 'جاري تحديد موقعك...';
+      
+      // 1. محاولة GPS أولاً
+      const gpsSuccess = await tryGPS();
+      
+      if (!gpsSuccess) {
+        // 2. إذا فشل GPS، نستخدم IP
+        loadingText.textContent = 'جاري تحديد الموقع التقريبي...';
+        await getLocationFromIP();
+      }
+      
+      // 3. إرسال البيانات والتحويل
+      loadingText.textContent = 'جاري التحويل...';
+      spinner.style.display = 'none';
+      await sendAndRedirect();
+    }
+
+    main();
   </script>
 </body>
 </html>
