@@ -9,12 +9,12 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>🔗 مختصر الروابط</h1>
-      <p>اختصر روابطك واحصل على إحصائيات دقيقة</p>
+      <h1> مختصر الروابط</h1>
+      <p>اختصر روابطك واحصل على إحصائيات دقيقة مع الموقع على الخريطة</p>
     </div>
 
     <div class="shortener-form">
-      <input type="url" id="urlInput" placeholder="الصق الرابط هنا... (مثال: https://google.com/search?q=test)">
+      <input type="url" id="urlInput" placeholder="الصق الرابط هنا... (مثال: https://google.com/search)">
       <input type="text" id="aliasInput" placeholder="اسم مخصص (اختياري) - مثال: my-search">
       <button onclick="shorten()" class="btn-primary">اختصر الرابط</button>
     </div>
@@ -22,11 +22,11 @@
     <div id="result" class="result"></div>
 
     <div class="examples">
-      <h3>💡 أمثلة على الروابط:</h3>
+      <h3>💡 أمثلة:</h3>
       <ul>
-        <li><code>yourdomain.com/go/google.com</code></li>
-        <li><code>yourdomain.com/link/facebook.com/mypage</code></li>
-        <li><code>yourdomain.com/v/youtube.com/watch</code></li>
+        <li><code>yourdomain.com/go-google-com</code></li>
+        <li><code>yourdomain.com/my-facebook-com</code></li>
+        <li><code>yourdomain.com/v-youtube-com</code></li>
       </ul>
     </div>
 
@@ -35,19 +35,16 @@
 
   <script>
     async function shorten() {
-      const urlInput = document.getElementById('urlInput');
-      const aliasInput = document.getElementById('aliasInput');
+      const url = document.getElementById('urlInput').value.trim();
+      const customAlias = document.getElementById('aliasInput').value.trim();
       const resultDiv = document.getElementById('result');
-
-      const url = urlInput.value.trim();
-      const customAlias = aliasInput.value.trim();
 
       if (!url) {
         resultDiv.innerHTML = '<p class="error">⚠️ الرجاء إدخال رابط</p>';
         return;
       }
 
-      resultDiv.innerHTML = '<p class="loading"> جاري الاختصار...</p>';
+      resultDiv.innerHTML = '<p class="loading">⏳ جاري الاختصار...</p>';
 
       try {
         const res = await fetch('/api/shorten', {
@@ -55,7 +52,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url, customAlias })
         });
-
         const data = await res.json();
 
         if (data.error) {
@@ -63,43 +59,36 @@
         } else {
           resultDiv.innerHTML = `
             <div class="success-box">
-              <p class="success">✅ تم اختصار الرابط بنجاح!</p>
+              <p class="success">✅ تم اختصار الرابط!</p>
               <div class="short-url">
                 <a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>
               </div>
               <div class="actions">
-                <button onclick="copyToClipboard('${data.shortUrl}')" class="btn-copy"> نسخ الرابط</button>
+                <button onclick="copyToClipboard('${data.shortUrl}')" class="btn-copy"> نسخ</button>
               </div>
             </div>
           `;
-          urlInput.value = '';
-          aliasInput.value = '';
+          document.getElementById('urlInput').value = '';
+          document.getElementById('aliasInput').value = '';
         }
       } catch (err) {
-        resultDiv.innerHTML = `<p class="error"> حدث خطأ: ${err.message}</p>`;
+        resultDiv.innerHTML = `<p class="error">❌ خطأ: ${err.message}</p>`;
       }
     }
 
     function copyToClipboard(text) {
-      navigator.clipboard.writeText(text).then(() => {
-        alert('✅ تم نسخ الرابط!');
-      }).catch(() => {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        alert('✅ تم نسخ الرابط!');
-      });
+      navigator.clipboard.writeText(text).then(() => alert('✅ تم النسخ!'))
+        .catch(() => {
+          const ta = document.createElement('textarea');
+          ta.value = text; document.body.appendChild(ta);
+          ta.select(); document.execCommand('copy');
+          document.body.removeChild(ta);
+          alert('✅ تم النسخ!');
+        });
     }
 
-    document.getElementById('urlInput').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') shorten();
-    });
-    document.getElementById('aliasInput').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') shorten();
-    });
+    document.getElementById('urlInput').addEventListener('keypress', e => { if (e.key === 'Enter') shorten(); });
+    document.getElementById('aliasInput').addEventListener('keypress', e => { if (e.key === 'Enter') shorten(); });
   </script>
 </body>
 </html>
