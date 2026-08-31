@@ -32,21 +32,8 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-    .loading-text {
-      font-size: 18px;
-      margin-bottom: 10px;
-    }
-    .redirecting {
-      font-size: 14px;
-      opacity: 0.8;
-    }
-    .error {
-      background: rgba(255,255,255,0.2);
-      padding: 20px;
-      border-radius: 10px;
-      margin-top: 20px;
-      display: none;
-    }
+    .loading-text { font-size: 18px; margin-bottom: 10px; }
+    .redirecting { font-size: 14px; opacity: 0.8; }
   </style>
 </head>
 <body>
@@ -54,7 +41,6 @@
     <div class="spinner"></div>
     <div class="loading-text">جاري التحميل...</div>
     <div class="redirecting">سيتم تحويلك خلال لحظات</div>
-    <div class="error" id="errorMsg"></div>
   </div>
 
   <script>
@@ -65,40 +51,15 @@
     const browser = params.get('br');
     const os = params.get('os');
 
-    async function trackAndRedirect() {
-      try {
-        // تسجيل النقرة
-        const response = await fetch('/api/click', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ shortCode, deviceType, browser, os })
-        });
-
-        const data = await response.json();
-        console.log('📊 بيانات التتبع:', data);
-
-        if (!response.ok) {
-          throw new Error('Failed to track');
-        }
-
-        // الانتظار قليلاً ثم التحويل
-        setTimeout(() => {
-          window.location.replace(originalUrl);
-        }, 1500);
-
-      } catch (error) {
-        console.error('Tracking error:', error);
-        // في حالة الخطأ، حوّل مباشرة
-        document.querySelector('.error').style.display = 'block';
-        document.querySelector('.error').textContent = 'حدث خطأ، جاري التحويل...';
-        setTimeout(() => {
-          window.location.replace(originalUrl);
-        }, 2000);
-      }
-    }
-
-    // بدء التتبع
-    trackAndRedirect();
+    fetch('/api/click', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shortCode, deviceType, browser, os })
+    }).finally(() => {
+      setTimeout(() => {
+        window.location.replace(originalUrl);
+      }, 1000);
+    });
   </script>
 </body>
 </html>
