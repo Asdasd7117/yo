@@ -8,35 +8,98 @@
 </head>
 <body>
   <div class="container">
-    <h1>🔗 مختصر الروابط</h1>
-    <input type="url" id="urlInput" placeholder="الصق الرابط الطويل هنا...">
-    <button onclick="shorten()">اختصر</button>
-    <div id="result"></div>
+    <div class="header">
+      <h1>🔗 مختصر الروابط</h1>
+      <p>اختصر روابطك واحصل على إحصائيات دقيقة</p>
+    </div>
+
+    <div class="shortener-form">
+      <input type="url" id="urlInput" placeholder="الصق الرابط هنا... (مثال: https://google.com/search?q=test)">
+      <input type="text" id="aliasInput" placeholder="اسم مخصص (اختياري) - مثال: my-search">
+      <button onclick="shorten()" class="btn-primary">اختصر الرابط</button>
+    </div>
+
+    <div id="result" class="result"></div>
+
+    <div class="examples">
+      <h3>💡 أمثلة على الروابط:</h3>
+      <ul>
+        <li><code>yourdomain.com/go/google.com</code></li>
+        <li><code>yourdomain.com/link/facebook.com/mypage</code></li>
+        <li><code>yourdomain.com/v/youtube.com/watch</code></li>
+      </ul>
+    </div>
+
     <a href="/dashboard.html" class="dashboard-link">📊 لوحة التحكم</a>
   </div>
+
   <script>
     async function shorten() {
-      const url = document.getElementById('urlInput').value;
+      const urlInput = document.getElementById('urlInput');
+      const aliasInput = document.getElementById('aliasInput');
       const resultDiv = document.getElementById('result');
-      resultDiv.innerHTML = '<p>جاري الاختصار...</p>';
 
-      const res = await fetch('/api/shorten', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
-      });
-      const data = await res.json();
+      const url = urlInput.value.trim();
+      const customAlias = aliasInput.value.trim();
 
-      if (data.error) {
-        resultDiv.innerHTML = `<p class="error">${data.error}</p>`;
-      } else {
-        resultDiv.innerHTML = `
-          <p class="success">✅ الرابط القصير:</p>
-          <a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>
-          <button onclick="navigator.clipboard.writeText('${data.shortUrl}').then(()=>alert('تم النسخ!'))">📋 نسخ</button>
-        `;
+      if (!url) {
+        resultDiv.innerHTML = '<p class="error">⚠️ الرجاء إدخال رابط</p>';
+        return;
+      }
+
+      resultDiv.innerHTML = '<p class="loading"> جاري الاختصار...</p>';
+
+      try {
+        const res = await fetch('/api/shorten', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, customAlias })
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+          resultDiv.innerHTML = `<p class="error">❌ ${data.error}</p>`;
+        } else {
+          resultDiv.innerHTML = `
+            <div class="success-box">
+              <p class="success">✅ تم اختصار الرابط بنجاح!</p>
+              <div class="short-url">
+                <a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>
+              </div>
+              <div class="actions">
+                <button onclick="copyToClipboard('${data.shortUrl}')" class="btn-copy"> نسخ الرابط</button>
+              </div>
+            </div>
+          `;
+          urlInput.value = '';
+          aliasInput.value = '';
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `<p class="error"> حدث خطأ: ${err.message}</p>`;
       }
     }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert('✅ تم نسخ الرابط!');
+      }).catch(() => {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('✅ تم نسخ الرابط!');
+      });
+    }
+
+    document.getElementById('urlInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') shorten();
+    });
+    document.getElementById('aliasInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') shorten();
+    });
   </script>
 </body>
 </html>
