@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>لوحة التحكم - مختصر الروابط</title>
+  <title>لوحة التحكم</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="container wide">
     <div class="header">
       <h1>📊 لوحة التحكم</h1>
-      <a href="/" class="btn-back">← رجوع للرئيسية</a>
+      <a href="/" class="btn-back">← رجوع</a>
     </div>
 
     <div id="stats" class="stats-summary"></div>
@@ -21,8 +21,8 @@
           <th>الرابط المختصر</th>
           <th>الرابط الأصلي</th>
           <th>النقرات</th>
-          <th>تاريخ الإنشاء</th>
-          <th>الإجراءات</th>
+          <th>التاريخ</th>
+          <th>إجراءات</th>
         </tr>
       </thead>
       <tbody id="tableBody">
@@ -44,31 +44,25 @@
         updateStats();
       } catch (err) {
         document.getElementById('tableBody').innerHTML = 
-          `<tr><td colspan="5" class="error">❌ خطأ في تحميل البيانات</td></tr>`;
+          `<tr><td colspan="5" class="error"> خطأ</td></tr>`;
       }
     }
 
     function displayLinks() {
       const tbody = document.getElementById('tableBody');
-      
       if (allLinks.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5">لا توجد روابط بعد</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">لا توجد روابط</td></tr>';
         return;
       }
-
       tbody.innerHTML = allLinks.map(link => `
         <tr>
-          <td>
-            <a href="/${link.short_code}" target="_blank" class="short-link">
-              /${link.short_code}
-            </a>
-          </td>
+          <td><a href="/${link.short_code}" target="_blank" class="short-link">/${link.short_code}</a></td>
           <td class="url-cell" title="${link.original_url}">${link.original_url}</td>
-          <td><strong class="clicks-count">${link.clicks_count}</strong></td>
+          <td><strong>${link.clicks_count}</strong></td>
           <td>${new Date(link.created_at).toLocaleString('ar-SA')}</td>
           <td>
-            <button onclick="showDetails('${link.short_code}')" class="btn-small">📈 التفاصيل</button>
-            <button onclick="copyLink('${link.short_code}')" class="btn-small">📋 نسخ</button>
+            <button onclick="showDetails('${link.short_code}')" class="btn-small"></button>
+            <button onclick="copyLink('${link.short_code}')" class="btn-small">📋</button>
           </td>
         </tr>
       `).join('');
@@ -76,18 +70,11 @@
 
     function updateStats() {
       const totalLinks = allLinks.length;
-      const totalClicks = allLinks.reduce((sum, link) => sum + parseInt(link.clicks_count), 0);
-      
+      const totalClicks = allLinks.reduce((sum, l) => sum + parseInt(l.clicks_count), 0);
       document.getElementById('stats').innerHTML = `
         <div class="stat-cards">
-          <div class="stat-card">
-            <div class="stat-value">${totalLinks}</div>
-            <div class="stat-label">إجمالي الروابط</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value">${totalClicks}</div>
-            <div class="stat-label">إجمالي النقرات</div>
-          </div>
+          <div class="stat-card"><div class="stat-value">${totalLinks}</div><div class="stat-label">الروابط</div></div>
+          <div class="stat-card"><div class="stat-value">${totalClicks}</div><div class="stat-label">النقرات</div></div>
         </div>
       `;
     }
@@ -101,114 +88,48 @@
         const res = await fetch(`/api/clicks/${shortCode}`);
         const data = await res.json();
 
-        console.log('📊 بيانات النقرات:', data);
-
         if (data.clicks.length === 0) {
-          detailsDiv.innerHTML = `
-            <div class="details-header">
-              <h3>تفاصيل /${shortCode}</h3>
-              <button onclick="closeDetails()" class="btn-close">✕</button>
-            </div>
-            <p class="no-data">لا توجد نقرات بعد</p>
-          `;
+          detailsDiv.innerHTML = `<h3>تفاصيل /${shortCode}</h3><p>لا توجد نقرات</p>`;
           return;
         }
 
-        // تحليل البيانات
-        const countries = {};
-        const cities = {};
-        const devices = {};
-        const browsers = {};
-
-        data.clicks.forEach(click => {
-          if (click.country) countries[click.country] = (countries[click.country] || 0) + 1;
-          if (click.city) cities[click.city] = (cities[click.city] || 0) + 1;
-          devices[click.device_type] = (devices[click.device_type] || 0) + 1;
-          browsers[click.browser] = (browsers[click.browser] || 0) + 1;
+        const countries = {}, cities = {}, devices = {}, browsers = {};
+        data.clicks.forEach(c => {
+          if (c.country) countries[c.country] = (countries[c.country] || 0) + 1;
+          if (c.city) cities[c.city] = (cities[c.city] || 0) + 1;
+          devices[c.device_type] = (devices[c.device_type] || 0) + 1;
+          browsers[c.browser] = (browsers[c.browser] || 0) + 1;
         });
 
         detailsDiv.innerHTML = `
           <div class="details-header">
-            <h3>📊 تفاصيل النقرات - /${shortCode}</h3>
+            <h3>📊 تفاصيل /${shortCode}</h3>
             <button onclick="closeDetails()" class="btn-close">✕</button>
           </div>
-          
           <div class="stats-grid">
-            <div class="stat-box">
-              <h4>🌍 الدول</h4>
-              ${Object.entries(countries).length > 0 ? Object.entries(countries).map(([c, n]) => `
-                <div class="stat-item">
-                  <span>${c}</span>
-                  <strong>${n}</strong>
-                </div>
-              `).join('') : '<p class="no-data">لا توجد بيانات</p>'}
-            </div>
-
-            <div class="stat-box">
-              <h4>🏙️ المدن</h4>
-              ${Object.entries(cities).length > 0 ? Object.entries(cities).map(([c, n]) => `
-                <div class="stat-item">
-                  <span>${c}</span>
-                  <strong>${n}</strong>
-                </div>
-              `).join('') : '<p class="no-data">لا توجد بيانات</p>'}
-            </div>
-
-            <div class="stat-box">
-              <h4>📱 الأجهزة</h4>
-              ${Object.entries(devices).map(([d, n]) => `
-                <div class="stat-item">
-                  <span>${d}</span>
-                  <strong>${n}</strong>
-                </div>
-              `).join('')}
-            </div>
-
-            <div class="stat-box">
-              <h4>🌐 المتصفحات</h4>
-              ${Object.entries(browsers).map(([b, n]) => `
-                <div class="stat-item">
-                  <span>${b}</span>
-                  <strong>${n}</strong>
-                </div>
-              `).join('')}
-            </div>
+            <div class="stat-box"><h4>🌍 الدول</h4>${Object.entries(countries).map(([c,n]) => `<div class="stat-item"><span>${c}</span><strong>${n}</strong></div>`).join('')}</div>
+            <div class="stat-box"><h4>🏙️ المدن</h4>${Object.entries(cities).map(([c,n]) => `<div class="stat-item"><span>${c}</span><strong>${n}</strong></div>`).join('')}</div>
+            <div class="stat-box"><h4>📱 الأجهزة</h4>${Object.entries(devices).map(([d,n]) => `<div class="stat-item"><span>${d}</span><strong>${n}</strong></div>`).join('')}</div>
+            <div class="stat-box"><h4>🌐 المتصفحات</h4>${Object.entries(browsers).map(([b,n]) => `<div class="stat-item"><span>${b}</span><strong>${n}</strong></div>`).join('')}</div>
           </div>
-
-          <h4> آخر النقرات</h4>
+          <h4>📋 آخر النقرات</h4>
           <table class="clicks-table">
-            <thead>
+            <thead><tr><th>الدولة</th><th>المدينة</th><th>الجهاز</th><th>المتصفح</th><th>الموقع</th><th>الوقت</th></tr></thead>
+            <tbody>${data.clicks.map(c => `
               <tr>
-                <th>الدولة</th>
-                <th>المدينة</th>
-                <th>الجهاز</th>
-                <th>المتصفح</th>
-                <th>الموقع</th>
-                <th>الوقت</th>
+                <td>${c.country || '-'}</td>
+                <td>${c.city || '-'}</td>
+                <td>${c.device_type || '-'}</td>
+                <td>${c.browser || '-'}</td>
+                <td>${c.lat && c.lng ? `<a href="https://maps.google.com/?q=${c.lat},${c.lng}" target="_blank"></a>` : '-'}</td>
+                <td>${new Date(c.clicked_at).toLocaleString('ar-SA')}</td>
               </tr>
-            </thead>
-            <tbody>
-              ${data.clicks.map(click => `
-                <tr>
-                  <td>${click.country || '-'}</td>
-                  <td>${click.city || '-'}</td>
-                  <td>${click.device_type || '-'}</td>
-                  <td>${click.browser || '-'}</td>
-                  <td>${click.lat && click.lng ? 
-                    `<a href="https://maps.google.com/?q=${click.lat},${click.lng}" target="_blank">📍 عرض</a>` : 
-                    '-'}</td>
-                  <td>${new Date(click.clicked_at).toLocaleString('ar-SA')}</td>
-                </tr>
-              `).join('')}
-            </tbody>
+            `).join('')}</tbody>
           </table>
         `;
-
-        // التمرير إلى التفاصيل
         detailsDiv.scrollIntoView({ behavior: 'smooth' });
-
       } catch (err) {
-        detailsDiv.innerHTML = `<p class="error">❌ خطأ في تحميل التفاصيل</p>`;
+        detailsDiv.innerHTML = `<p class="error">❌ خطأ</p>`;
       }
     }
 
@@ -219,12 +140,9 @@
 
     function copyLink(shortCode) {
       const fullUrl = `${window.location.origin}/${shortCode}`;
-      navigator.clipboard.writeText(fullUrl).then(() => {
-        alert('✅ تم نسخ الرابط!');
-      });
+      navigator.clipboard.writeText(fullUrl).then(() => alert('✅ تم النسخ!'));
     }
 
-    // تحميل الروابط عند فتح الصفحة
     loadLinks();
   </script>
 </body>
