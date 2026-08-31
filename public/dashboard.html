@@ -44,7 +44,7 @@
         updateStats();
       } catch (err) {
         document.getElementById('tableBody').innerHTML = 
-          `<tr><td colspan="5" class="error"> خطأ في تحميل البيانات</td></tr>`;
+          `<tr><td colspan="5" class="error">❌ خطأ في تحميل البيانات</td></tr>`;
       }
     }
 
@@ -67,7 +67,7 @@
           <td><strong class="clicks-count">${link.clicks_count}</strong></td>
           <td>${new Date(link.created_at).toLocaleString('ar-SA')}</td>
           <td>
-            <button onclick="showDetails('${link.short_code}')" class="btn-small"> التفاصيل</button>
+            <button onclick="showDetails('${link.short_code}')" class="btn-small">📈 التفاصيل</button>
             <button onclick="copyLink('${link.short_code}')" class="btn-small">📋 نسخ</button>
           </td>
         </tr>
@@ -101,11 +101,13 @@
         const res = await fetch(`/api/clicks/${shortCode}`);
         const data = await res.json();
 
+        console.log('📊 بيانات النقرات:', data);
+
         if (data.clicks.length === 0) {
           detailsDiv.innerHTML = `
             <div class="details-header">
               <h3>تفاصيل /${shortCode}</h3>
-              <button onclick="closeDetails()" class="btn-close"></button>
+              <button onclick="closeDetails()" class="btn-close">✕</button>
             </div>
             <p class="no-data">لا توجد نقرات بعد</p>
           `;
@@ -134,26 +136,26 @@
           <div class="stats-grid">
             <div class="stat-box">
               <h4>🌍 الدول</h4>
-              ${Object.entries(countries).map(([c, n]) => `
+              ${Object.entries(countries).length > 0 ? Object.entries(countries).map(([c, n]) => `
                 <div class="stat-item">
                   <span>${c}</span>
                   <strong>${n}</strong>
                 </div>
-              `).join('')}
+              `).join('') : '<p class="no-data">لا توجد بيانات</p>'}
             </div>
 
             <div class="stat-box">
               <h4>🏙️ المدن</h4>
-              ${Object.entries(cities).map(([c, n]) => `
+              ${Object.entries(cities).length > 0 ? Object.entries(cities).map(([c, n]) => `
                 <div class="stat-item">
                   <span>${c}</span>
                   <strong>${n}</strong>
                 </div>
-              `).join('')}
+              `).join('') : '<p class="no-data">لا توجد بيانات</p>'}
             </div>
 
             <div class="stat-box">
-              <h4> الأجهزة</h4>
+              <h4>📱 الأجهزة</h4>
               ${Object.entries(devices).map(([d, n]) => `
                 <div class="stat-item">
                   <span>${d}</span>
@@ -173,7 +175,7 @@
             </div>
           </div>
 
-          <h4>📋 آخر النقرات</h4>
+          <h4> آخر النقرات</h4>
           <table class="clicks-table">
             <thead>
               <tr>
@@ -190,8 +192,8 @@
                 <tr>
                   <td>${click.country || '-'}</td>
                   <td>${click.city || '-'}</td>
-                  <td>${click.device_type}</td>
-                  <td>${click.browser}</td>
+                  <td>${click.device_type || '-'}</td>
+                  <td>${click.browser || '-'}</td>
                   <td>${click.lat && click.lng ? 
                     `<a href="https://maps.google.com/?q=${click.lat},${click.lng}" target="_blank">📍 عرض</a>` : 
                     '-'}</td>
