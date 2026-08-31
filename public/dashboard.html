@@ -9,7 +9,7 @@
 <body>
   <div class="container wide">
     <div class="header">
-      <h1>📊 لوحة التحكم</h1>
+      <h1> لوحة التحكم</h1>
       <a href="/" class="btn-back">← رجوع</a>
     </div>
 
@@ -62,7 +62,7 @@
           <td>${new Date(link.created_at).toLocaleString('ar-SA')}</td>
           <td>
             <button onclick="showDetails('${link.short_code}')" class="btn-small">📈 التفاصيل</button>
-            <button onclick="copyLink('${link.short_code}')" class="btn-small"> نسخ</button>
+            <button onclick="copyLink('${link.short_code}')" class="btn-small"></button>
           </td>
         </tr>
       `).join('');
@@ -99,7 +99,6 @@
           return;
         }
 
-        // تحليل الإحصائيات
         const countries = {}, cities = {}, devices = {}, browsers = {}, osList = {};
         data.clicks.forEach(c => {
           if (c.country) countries[c.country] = (countries[c.country] || 0) + 1;
@@ -111,7 +110,7 @@
 
         detailsDiv.innerHTML = `
           <div class="details-header">
-            <h3>📊 تفاصيل النقرات - /${shortCode}</h3>
+            <h3> تفاصيل النقرات - /${shortCode}</h3>
             <button onclick="closeDetails()" class="btn-close">✕</button>
           </div>
 
@@ -145,7 +144,7 @@
             </div>
 
             <div class="stat-box">
-              <h4> أنظمة التشغيل</h4>
+              <h4>💻 أنظمة التشغيل</h4>
               ${Object.entries(osList).map(([o,n]) => `
                 <div class="stat-item"><span>${o}</span><strong>${n}</strong></div>
               `).join('')}
@@ -157,12 +156,13 @@
             <thead>
               <tr>
                 <th>#</th>
+                <th>🌐 IP</th>
                 <th>الدولة</th>
                 <th>المدينة</th>
                 <th>الجهاز</th>
                 <th>المتصفح</th>
                 <th>النظام</th>
-                <th>🗺️ الموقع على الخريطة</th>
+                <th>🗺️ الموقع</th>
                 <th>الوقت</th>
               </tr>
             </thead>
@@ -170,6 +170,10 @@
               ${data.clicks.map((c, i) => `
                 <tr>
                   <td>${i + 1}</td>
+                  <td>
+                    <code class="ip-code">${c.ip_address || '-'}</code>
+                    ${c.ip_address ? `<br><a href="https://whatismyipaddress.com/ip/${c.ip_address}" target="_blank" class="ip-link">🔍 بحث</a>` : ''}
+                  </td>
                   <td><strong>${c.country || '-'}</strong></td>
                   <td>${c.city || '-'}</td>
                   <td>${c.device_type || '-'}</td>
@@ -178,7 +182,7 @@
                   <td>
                     ${c.lat && c.lng ? 
                       `<a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" class="map-link">
-                         عرض على الخريطة
+                         📍 عرض
                       </a>
                       <br><small>(${c.lat.toFixed(4)}, ${c.lng.toFixed(4)})</small>` : 
                       '<span style="color:#999">غير متوفر</span>'}
