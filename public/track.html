@@ -74,6 +74,9 @@
           body: JSON.stringify({ shortCode, deviceType, browser, os })
         });
 
+        const data = await response.json();
+        console.log('📊 بيانات التتبع:', data);
+
         if (!response.ok) {
           throw new Error('Failed to track');
         }
@@ -81,7 +84,7 @@
         // الانتظار قليلاً ثم التحويل
         setTimeout(() => {
           window.location.replace(originalUrl);
-        }, 1000);
+        }, 1500);
 
       } catch (error) {
         console.error('Tracking error:', error);
