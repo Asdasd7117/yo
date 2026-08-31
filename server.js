@@ -1,7 +1,6 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const { nanoid } = require('nanoid');
-const getSlug = require('speakingurl');
 const UAParser = require('ua-parser-js');
 const db = require('./database');
 const path = require('path');
@@ -10,29 +9,35 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// تهيئة قاعدة البيانات
 db.initDB().then(() => {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`✅ السيرفر شغّال على المنفذ ${PORT}`);
   });
 }).catch(err => {
-  console.error('❌ خطأ في قاعدة البيانات:', err);
+  console.error('❌ خطأ:', err);
   process.exit(1);
 });
 
-// 🏠 الصفحة الرئيسية
+// تحويل الدومين لصيغة آمنة للرابط
+function encodeDomain(hostname) {
+  return hostname.replace(/\./g, '-').replace(/\//g, '-');
+}
+
+// إعادة الدومين للصيغة الأصلية
+function decodeDomain(encoded) {
+  return encoded.replace(/-/g, '.');
+}
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 🔗 إنشاء رابط مختصر - ينتهي بالدومين الأصلي
+// 🔗 إنشاء رابط مختصر
 app.post('/api/shorten', async (req, res) => {
   const { url, customAlias } = req.body;
 
-  if (!url) {
-    return res.status(400).json({ error: 'الرابط مطلوب' });
-  }
+  if (!url) return res.status(400).json({ error: 'الرابط مطلوب' });
 
   let parsedUrl;
   try {
@@ -41,29 +46,24 @@ app.post('/api/shorten', async (req, res) => {
     return res.status(400).json({ error: 'رابط غير صالح' });
   }
 
+  const encodedDomain = encodeDomain(parsedUrl.hostname);
   let shortCode;
 
-  // إذا المستخدم طلب اسم مخصص
   if (customAlias && customAlias.trim() !== '') {
-    const aliasSlug = getSlug(customAlias.trim().toLowerCase());
-    shortCode = `${aliasSlug}/${parsedUrl.hostname}`;
+    shortCode = `${customAlias.trim().toLowerCase().replace(/\s+/g, '-')}-${encodedDomain}`;
   } else {
-    // إنشاء بادئة قصيرة + الدومين الكامل
-    const prefix = generatePrefix();
-    shortCode = `${prefix}/${parsedUrl.hostname}`;
+    const prefixes = ['go', 'link', 'v', 'r', 'to', 'at'];
+    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+    shortCode = `${prefix}-${encodedDomain}`;
   }
 
-  // التحقق من عدم التكرار
+  // التأكد من عدم التكرار
   const existing = db.get('SELECT id FROM links WHERE short_code = ?', [shortCode]);
   if (existing) {
     shortCode = `${shortCode}-${Math.floor(Math.random() * 900) + 100}`;
   }
 
-  // حفظ الرابط
-  db.run(
-    'INSERT INTO links (short_code, original_url) VALUES (?, ?)',
-    [shortCode, url]
-  );
+  db.run('INSERT INTO links (short_code, original_url) VALUES (?, ?)', [shortCode, url]);
 
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   res.json({
@@ -73,13 +73,7 @@ app.post('/api/shorten', async (req, res) => {
   });
 });
 
-// دالة إنشاء بادئة قصيرة
-function generatePrefix() {
-  const prefixes = ['go', 'link', 'v', 'r', 'to', 'at', 'in', 'on'];
-  return prefixes[Math.floor(Math.random() * prefixes.length)];
-}
-
-// 📊 لوحة التحكم
+//  لوحة التحكم
 app.get('/api/dashboard', (req, res) => {
   const links = db.all(`
     SELECT l.id, l.short_code, l.original_url, l.created_at,
@@ -92,63 +86,48 @@ app.get('/api/dashboard', (req, res) => {
   res.json(links);
 });
 
-// 📈 تفاصيل نقرات رابط معين
-app.get('/api/clicks/*', (req, res) => {
-  const shortCode = req.params[0];
-  const link = db.get('SELECT * FROM links WHERE short_code = ?', [shortCode]);
-  if (!link) {
-    return res.status(404).json({ error: 'الرابط غير موجود' });
-  }
+// 📈 تفاصيل نقرات
+app.get('/api/clicks/:shortCode', (req, res) => {
+  const link = db.get('SELECT * FROM links WHERE short_code = ?', [req.params.shortCode]);
+  if (!link) return res.status(404).json({ error: 'غير موجود' });
 
   const clicks = db.all(`
     SELECT country, city, device_type, browser, os, lat, lng, clicked_at
-    FROM clicks 
-    WHERE link_id = ?
-    ORDER BY clicked_at DESC
-    LIMIT 100
+    FROM clicks WHERE link_id = ? ORDER BY clicked_at DESC LIMIT 100
   `, [link.id]);
 
   res.json({ link, clicks });
 });
 
-// 📝 تسجيل النقرة مع الموقع
+// 📝 تسجيل النقرة
 app.post('/api/click', async (req, res) => {
   const { shortCode, deviceType, browser, os } = req.body;
 
   const link = db.get('SELECT id FROM links WHERE short_code = ?', [shortCode]);
-  if (!link) {
-    return res.status(404).json({ error: 'رابط غير موجود' });
-  }
+  if (!link) return res.status(404).json({ error: 'رابط غير موجود' });
 
-  let ip = '';
-  if (req.headers['x-forwarded-for']) {
-    ip = req.headers['x-forwarded-for'].split(',')[0].trim();
-  } else if (req.headers['x-real-ip']) {
-    ip = req.headers['x-real-ip'].trim();
-  } else {
-    ip = req.ip || req.connection.remoteAddress;
-  }
-
+  let ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
+           req.headers['x-real-ip'] || 
+           req.ip || '';
   ip = ip.replace('::ffff:', '');
-  console.log('🔍 IP المستخدم:', ip);
+
+  console.log('🔍 IP:', ip);
 
   let country = null, city = null, lat = null, lng = null;
 
   try {
     const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`);
     const geoData = await geoRes.json();
-
-    console.log('📍 بيانات الموقع:', JSON.stringify(geoData));
+    console.log('📍 Geo:', JSON.stringify(geoData));
 
     if (geoData.status === 'success') {
       country = geoData.country;
       city = geoData.city;
       lat = geoData.lat;
       lng = geoData.lon;
-      console.log('✅ الموقع:', country, city);
     }
   } catch (err) {
-    console.error(' خطأ Geocoding:', err.message);
+    console.error('❌ Geocoding error:', err.message);
   }
 
   db.run(`
@@ -156,45 +135,27 @@ app.post('/api/click', async (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, [link.id, country, city, deviceType, browser, os, lat, lng]);
 
-  console.log('✅ تم حفظ النقرة');
+  console.log('✅ حفظ:', { country, city, lat, lng });
   res.json({ success: true, location: { country, city, lat, lng } });
 });
 
-// 🎯 صفحة التتبع
 app.get('/track.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'track.html'));
 });
 
-//  إعادة التوجيه - يقرأ المسار الكامل (wildcard)
-app.get('/*', (req, res) => {
-  const fullPath = req.params[0];
-  
-  // تجاهل المسارات الثابتة
-  if (!fullPath || fullPath === 'track.html' || fullPath.startsWith('api/')) {
-    return res.status(404).send('غير موجود');
-  }
+// 🔄 إعادة التوجيه (wildcard)
+app.get('/:shortCode', (req, res) => {
+  const shortCode = req.params.shortCode;
+  const link = db.get('SELECT * FROM links WHERE short_code = ?', [shortCode]);
 
-  const link = db.get('SELECT * FROM links WHERE short_code = ?', [fullPath]);
-  
   if (!link) {
     return res.status(404).send(`
-      <!DOCTYPE html>
-      <html dir="rtl" lang="ar">
-      <head>
-        <meta charset="UTF-8">
-        <title>رابط غير موجود</title>
-        <style>
-          body { font-family: Arial; text-align: center; padding: 50px; background: #f5f5f5; }
-          .error { color: #e74c3c; font-size: 24px; }
-          a { color: #3498db; }
-        </style>
-      </head>
-      <body>
-        <h1 class="error"> الرابط غير موجود</h1>
-        <p>الرابط اللي تبحث عنه مو موجود أو تم حذفه</p>
-        <a href="/">← رجوع للصفحة الرئيسية</a>
-      </body>
-      </html>
+      <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>غير موجود</title>
+      <style>body{font-family:Arial;text-align:center;padding:50px;background:#f5f5f5}
+      .error{color:#e74c3c;font-size:24px}a{color:#3498db}</style></head>
+      <body><h1 class="error">❌ الرابط غير موجود</h1>
+      <p>الرابط اللي تبحث عنه مو موجود</p>
+      <a href="/">← رجوع</a></body></html>
     `);
   }
 
@@ -206,8 +167,6 @@ app.get('/*', (req, res) => {
   res.redirect(
     `/track.html?code=${encodeURIComponent(link.short_code)}` +
     `&url=${encodeURIComponent(link.original_url)}` +
-    `&dt=${deviceType}` +
-    `&br=${encodeURIComponent(browser)}` +
-    `&os=${encodeURIComponent(os)}`
+    `&dt=${deviceType}&br=${encodeURIComponent(browser)}&os=${encodeURIComponent(os)}`
   );
 });
