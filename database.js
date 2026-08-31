@@ -4,7 +4,7 @@ const path = require('path');
 
 const DB_PATH = path.join(__dirname, 'links.db');
 
-let db;
+let db = null;
 
 async function initDB() {
   const SQL = await initSqlJs();
@@ -16,15 +16,18 @@ async function initDB() {
     db = new SQL.Database();
   }
 
+  // جدول الروابط
   db.run(`
     CREATE TABLE IF NOT EXISTS links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       short_code TEXT UNIQUE NOT NULL,
       original_url TEXT NOT NULL,
+      custom_alias INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
+  // جدول النقرات
   db.run(`
     CREATE TABLE IF NOT EXISTS clicks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +39,8 @@ async function initDB() {
       os TEXT,
       lat REAL,
       lng REAL,
-      clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(link_id) REFERENCES links(id)
     )
   `);
 
@@ -46,17 +50,23 @@ async function initDB() {
 
 function saveDB() {
   if (!db) return;
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(DB_PATH, buffer);
+  try {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    fs.writeFileSync(DB_PATH, buffer);
+  } catch (err) {
+    console.error('Error saving DB:', err);
+  }
 }
 
 function run(sql, params = []) {
+  if (!db) throw new Error('Database not initialized');
   db.run(sql, params);
   saveDB();
 }
 
 function get(sql, params = []) {
+  if (!db) return null;
   const stmt = db.prepare(sql);
   stmt.bind(params);
   if (stmt.step()) {
@@ -69,6 +79,7 @@ function get(sql, params = []) {
 }
 
 function all(sql, params = []) {
+  if (!db) return [];
   const stmt = db.prepare(sql);
   stmt.bind(params);
   const results = [];
