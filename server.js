@@ -19,14 +19,8 @@ db.initDB().then(() => {
   process.exit(1);
 });
 
-// تحويل الدومين لصيغة آمنة للرابط
 function encodeDomain(hostname) {
   return hostname.replace(/\./g, '-').replace(/\//g, '-');
-}
-
-// إعادة الدومين للصيغة الأصلية
-function decodeDomain(encoded) {
-  return encoded.replace(/-/g, '.');
 }
 
 app.get('/', (req, res) => {
@@ -57,7 +51,6 @@ app.post('/api/shorten', async (req, res) => {
     shortCode = `${prefix}-${encodedDomain}`;
   }
 
-  // التأكد من عدم التكرار
   const existing = db.get('SELECT id FROM links WHERE short_code = ?', [shortCode]);
   if (existing) {
     shortCode = `${shortCode}-${Math.floor(Math.random() * 900) + 100}`;
@@ -73,7 +66,7 @@ app.post('/api/shorten', async (req, res) => {
   });
 });
 
-//  لوحة التحكم
+// 📊 لوحة التحكم
 app.get('/api/dashboard', (req, res) => {
   const links = db.all(`
     SELECT l.id, l.short_code, l.original_url, l.created_at,
@@ -86,26 +79,27 @@ app.get('/api/dashboard', (req, res) => {
   res.json(links);
 });
 
-// 📈 تفاصيل نقرات
+// 📈 تفاصيل نقرات (مع IP)
 app.get('/api/clicks/:shortCode', (req, res) => {
   const link = db.get('SELECT * FROM links WHERE short_code = ?', [req.params.shortCode]);
   if (!link) return res.status(404).json({ error: 'غير موجود' });
 
   const clicks = db.all(`
-    SELECT country, city, device_type, browser, os, lat, lng, clicked_at
+    SELECT ip_address, country, city, device_type, browser, os, lat, lng, clicked_at
     FROM clicks WHERE link_id = ? ORDER BY clicked_at DESC LIMIT 100
   `, [link.id]);
 
   res.json({ link, clicks });
 });
 
-// 📝 تسجيل النقرة
+// 📝 تسجيل النقرة مع IP والموقع
 app.post('/api/click', async (req, res) => {
   const { shortCode, deviceType, browser, os } = req.body;
 
   const link = db.get('SELECT id FROM links WHERE short_code = ?', [shortCode]);
   if (!link) return res.status(404).json({ error: 'رابط غير موجود' });
 
+  // الحصول على IP الحقيقي
   let ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
            req.headers['x-real-ip'] || 
            req.ip || '';
@@ -130,20 +124,21 @@ app.post('/api/click', async (req, res) => {
     console.error('❌ Geocoding error:', err.message);
   }
 
+  // حفظ IP مع باقي البيانات
   db.run(`
-    INSERT INTO clicks (link_id, country, city, device_type, browser, os, lat, lng)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, [link.id, country, city, deviceType, browser, os, lat, lng]);
+    INSERT INTO clicks (link_id, ip_address, country, city, device_type, browser, os, lat, lng)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [link.id, ip, country, city, deviceType, browser, os, lat, lng]);
 
-  console.log('✅ حفظ:', { country, city, lat, lng });
-  res.json({ success: true, location: { country, city, lat, lng } });
+  console.log('✅ حفظ:', { ip, country, city, lat, lng });
+  res.json({ success: true, ip, location: { country, city, lat, lng } });
 });
 
 app.get('/track.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'track.html'));
 });
 
-// 🔄 إعادة التوجيه (wildcard)
+// 🔄 إعادة التوجيه
 app.get('/:shortCode', (req, res) => {
   const shortCode = req.params.shortCode;
   const link = db.get('SELECT * FROM links WHERE short_code = ?', [shortCode]);
