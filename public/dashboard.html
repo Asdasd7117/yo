@@ -30,7 +30,7 @@
       </tbody>
     </table>
 
-    <div id="details" class="details-panel"></div>
+    <div id="details" class="details-panel" style="display:none;"></div>
   </div>
 
   <script>
@@ -44,7 +44,7 @@
         updateStats();
       } catch (err) {
         document.getElementById('tableBody').innerHTML = 
-          `<tr><td colspan="5" class="error"> خطأ</td></tr>`;
+          `<tr><td colspan="5" class="error">❌ خطأ في التحميل</td></tr>`;
       }
     }
 
@@ -61,8 +61,8 @@
           <td><strong>${link.clicks_count}</strong></td>
           <td>${new Date(link.created_at).toLocaleString('ar-SA')}</td>
           <td>
-            <button onclick="showDetails('${link.short_code}')" class="btn-small"></button>
-            <button onclick="copyLink('${link.short_code}')" class="btn-small">📋</button>
+            <button onclick="showDetails('${link.short_code}')" class="btn-small">📈 التفاصيل</button>
+            <button onclick="copyLink('${link.short_code}')" class="btn-small"> نسخ</button>
           </td>
         </tr>
       `).join('');
@@ -81,7 +81,7 @@
 
     async function showDetails(shortCode) {
       const detailsDiv = document.getElementById('details');
-      detailsDiv.innerHTML = '<p>جاري التحميل...</p>';
+      detailsDiv.innerHTML = '<p class="loading">جاري تحميل التفاصيل...</p>';
       detailsDiv.style.display = 'block';
 
       try {
@@ -89,52 +89,130 @@
         const data = await res.json();
 
         if (data.clicks.length === 0) {
-          detailsDiv.innerHTML = `<h3>تفاصيل /${shortCode}</h3><p>لا توجد نقرات</p>`;
+          detailsDiv.innerHTML = `
+            <div class="details-header">
+              <h3>📊 تفاصيل /${shortCode}</h3>
+              <button onclick="closeDetails()" class="btn-close">✕</button>
+            </div>
+            <p class="no-data">لا توجد نقرات بعد</p>
+          `;
           return;
         }
 
-        const countries = {}, cities = {}, devices = {}, browsers = {};
+        // تحليل الإحصائيات
+        const countries = {}, cities = {}, devices = {}, browsers = {}, osList = {};
         data.clicks.forEach(c => {
           if (c.country) countries[c.country] = (countries[c.country] || 0) + 1;
           if (c.city) cities[c.city] = (cities[c.city] || 0) + 1;
           devices[c.device_type] = (devices[c.device_type] || 0) + 1;
           browsers[c.browser] = (browsers[c.browser] || 0) + 1;
+          osList[c.os] = (osList[c.os] || 0) + 1;
         });
 
         detailsDiv.innerHTML = `
           <div class="details-header">
-            <h3>📊 تفاصيل /${shortCode}</h3>
+            <h3>📊 تفاصيل النقرات - /${shortCode}</h3>
             <button onclick="closeDetails()" class="btn-close">✕</button>
           </div>
+
           <div class="stats-grid">
-            <div class="stat-box"><h4>🌍 الدول</h4>${Object.entries(countries).map(([c,n]) => `<div class="stat-item"><span>${c}</span><strong>${n}</strong></div>`).join('')}</div>
-            <div class="stat-box"><h4>🏙️ المدن</h4>${Object.entries(cities).map(([c,n]) => `<div class="stat-item"><span>${c}</span><strong>${n}</strong></div>`).join('')}</div>
-            <div class="stat-box"><h4>📱 الأجهزة</h4>${Object.entries(devices).map(([d,n]) => `<div class="stat-item"><span>${d}</span><strong>${n}</strong></div>`).join('')}</div>
-            <div class="stat-box"><h4>🌐 المتصفحات</h4>${Object.entries(browsers).map(([b,n]) => `<div class="stat-item"><span>${b}</span><strong>${n}</strong></div>`).join('')}</div>
+            <div class="stat-box">
+              <h4>🌍 الدول</h4>
+              ${Object.entries(countries).map(([c,n]) => `
+                <div class="stat-item"><span>${c}</span><strong>${n}</strong></div>
+              `).join('')}
+            </div>
+
+            <div class="stat-box">
+              <h4>🏙️ المدن</h4>
+              ${Object.entries(cities).map(([c,n]) => `
+                <div class="stat-item"><span>${c}</span><strong>${n}</strong></div>
+              `).join('')}
+            </div>
+
+            <div class="stat-box">
+              <h4>📱 الأجهزة</h4>
+              ${Object.entries(devices).map(([d,n]) => `
+                <div class="stat-item"><span>${d}</span><strong>${n}</strong></div>
+              `).join('')}
+            </div>
+
+            <div class="stat-box">
+              <h4>🌐 المتصفحات</h4>
+              ${Object.entries(browsers).map(([b,n]) => `
+                <div class="stat-item"><span>${b}</span><strong>${n}</strong></div>
+              `).join('')}
+            </div>
+
+            <div class="stat-box">
+              <h4> أنظمة التشغيل</h4>
+              ${Object.entries(osList).map(([o,n]) => `
+                <div class="stat-item"><span>${o}</span><strong>${n}</strong></div>
+              `).join('')}
+            </div>
           </div>
-          <h4>📋 آخر النقرات</h4>
+
+          <h4>📋 سجل النقرات التفصيلي</h4>
           <table class="clicks-table">
-            <thead><tr><th>الدولة</th><th>المدينة</th><th>الجهاز</th><th>المتصفح</th><th>الموقع</th><th>الوقت</th></tr></thead>
-            <tbody>${data.clicks.map(c => `
+            <thead>
               <tr>
-                <td>${c.country || '-'}</td>
-                <td>${c.city || '-'}</td>
-                <td>${c.device_type || '-'}</td>
-                <td>${c.browser || '-'}</td>
-                <td>${c.lat && c.lng ? `<a href="https://maps.google.com/?q=${c.lat},${c.lng}" target="_blank"></a>` : '-'}</td>
-                <td>${new Date(c.clicked_at).toLocaleString('ar-SA')}</td>
+                <th>#</th>
+                <th>الدولة</th>
+                <th>المدينة</th>
+                <th>الجهاز</th>
+                <th>المتصفح</th>
+                <th>النظام</th>
+                <th>🗺️ الموقع على الخريطة</th>
+                <th>الوقت</th>
               </tr>
-            `).join('')}</tbody>
+            </thead>
+            <tbody>
+              ${data.clicks.map((c, i) => `
+                <tr>
+                  <td>${i + 1}</td>
+                  <td><strong>${c.country || '-'}</strong></td>
+                  <td>${c.city || '-'}</td>
+                  <td>${c.device_type || '-'}</td>
+                  <td>${c.browser || '-'}</td>
+                  <td>${c.os || '-'}</td>
+                  <td>
+                    ${c.lat && c.lng ? 
+                      `<a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" class="map-link">
+                         عرض على الخريطة
+                      </a>
+                      <br><small>(${c.lat.toFixed(4)}, ${c.lng.toFixed(4)})</small>` : 
+                      '<span style="color:#999">غير متوفر</span>'}
+                  </td>
+                  <td>${new Date(c.clicked_at).toLocaleString('ar-SA')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
           </table>
+
+          ${data.clicks.some(c => c.lat && c.lng) ? `
+            <h4 style="margin-top:30px;">🗺️ خريطة جميع المواقع</h4>
+            <div class="map-container">
+              <iframe 
+                width="100%" 
+                height="400" 
+                frameborder="0" 
+                scrolling="no" 
+                marginheight="0" 
+                marginwidth="0" 
+                src="https://www.google.com/maps?q=${data.clicks[0].lat},${data.clicks[0].lng}&z=5&output=embed">
+              </iframe>
+            </div>
+          ` : ''}
         `;
+
         detailsDiv.scrollIntoView({ behavior: 'smooth' });
+
       } catch (err) {
-        detailsDiv.innerHTML = `<p class="error">❌ خطأ</p>`;
+        detailsDiv.innerHTML = `<p class="error">❌ خطأ في تحميل التفاصيل: ${err.message}</p>`;
       }
     }
 
     function closeDetails() {
-      document.getElementById('details').innerHTML = '';
       document.getElementById('details').style.display = 'none';
     }
 
