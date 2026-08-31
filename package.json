@@ -1,6 +1,7 @@
 {
-  "name": "url-shortener",
+  "name": "natural-url-shortener",
   "version": "1.0.0",
+  "description": "URL shortener with natural-looking links",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,6 +11,10 @@
     "sql.js": "^1.10.3",
     "nanoid": "^3.3.7",
     "ua-parser-js": "^1.0.37",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "speakingurl": "^14.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
