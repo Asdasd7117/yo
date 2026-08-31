@@ -79,59 +79,122 @@ app.get('/api/dashboard', (req, res) => {
   res.json(links);
 });
 
-// 📈 تفاصيل نقرات (مع IP)
+// 📈 تفاصيل نقرات
 app.get('/api/clicks/:shortCode', (req, res) => {
   const link = db.get('SELECT * FROM links WHERE short_code = ?', [req.params.shortCode]);
   if (!link) return res.status(404).json({ error: 'غير موجود' });
 
   const clicks = db.all(`
-    SELECT ip_address, country, city, device_type, browser, os, lat, lng, clicked_at
+    SELECT ip_address, country, city, device_type, browser, os, lat, lng, accuracy, source, clicked_at
     FROM clicks WHERE link_id = ? ORDER BY clicked_at DESC LIMIT 100
   `, [link.id]);
 
   res.json({ link, clicks });
 });
 
-// 📝 تسجيل النقرة مع IP والموقع
-app.post('/api/click', async (req, res) => {
-  const { shortCode, deviceType, browser, os } = req.body;
-
-  const link = db.get('SELECT id FROM links WHERE short_code = ?', [shortCode]);
-  if (!link) return res.status(404).json({ error: 'رابط غير موجود' });
-
-  // الحصول على IP الحقيقي
+// 🌍 الحصول على الموقع من IP (يستخدمه المتصفح كـ fallback)
+app.get('/api/get-location', async (req, res) => {
   let ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
            req.headers['x-real-ip'] || 
            req.ip || '';
   ip = ip.replace('::ffff:', '');
 
-  console.log('🔍 IP:', ip);
+  console.log('🔍 IP للموقع:', ip);
 
-  let country = null, city = null, lat = null, lng = null;
+  let location = { country: null, city: null, lat: null, lng: null };
 
+  // محاولة ipapi.co أولاً (الأدق)
   try {
-    const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`);
-    const geoData = await geoRes.json();
-    console.log('📍 Geo:', JSON.stringify(geoData));
-
-    if (geoData.status === 'success') {
-      country = geoData.country;
-      city = geoData.city;
-      lat = geoData.lat;
-      lng = geoData.lon;
+    const res1 = await fetch(`https://ipapi.co/${ip}/json/`);
+    const data1 = await res1.json();
+    if (data1 && !data1.error && data1.country_name) {
+      location = {
+        country: data1.country_name,
+        city: data1.city,
+        lat: data1.latitude,
+        lng: data1.longitude
+      };
+      console.log('✅ ipapi.co:', location);
+      return res.json(location);
     }
-  } catch (err) {
-    console.error('❌ Geocoding error:', err.message);
-  }
+  } catch (e) {}
 
-  // حفظ IP مع باقي البيانات
+  // محاولة ipinfo.io
+  try {
+    const res2 = await fetch(`https://ipinfo.io/${ip}/json`);
+    const data2 = await res2.json();
+    if (data2 && data2.country) {
+      let lat = null, lng = null;
+      if (data2.loc) {
+        const [latStr, lngStr] = data2.loc.split(',');
+        lat = parseFloat(latStr);
+        lng = parseFloat(lngStr);
+      }
+      location = {
+        country: data2.country,
+        city: data2.city,
+        lat: lat,
+        lng: lng
+      };
+      console.log('✅ ipinfo.io:', location);
+      return res.json(location);
+    }
+  } catch (e) {}
+
+  // محاولة ip-api.com
+  try {
+    const res3 = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`);
+    const data3 = await res3.json();
+    if (data3 && data3.status === 'success') {
+      location = {
+        country: data3.country,
+        city: data3.city,
+        lat: data3.lat,
+        lng: data3.lon
+      };
+      console.log('✅ ip-api.com:', location);
+      return res.json(location);
+    }
+  } catch (e) {}
+
+  console.log('❌ كل المصادر فشلت');
+  res.json(location);
+});
+
+// 📝 تسجيل النقرة (يستقبل GPS أو IP)
+app.post('/api/click', async (req, res) => {
+  const { 
+    shortCode, deviceType, browser, os,
+    lat, lng, country, city, accuracy, source
+  } = req.body;
+
+  const link = db.get('SELECT id FROM links WHERE short_code = ?', [shortCode]);
+  if (!link) return res.status(404).json({ error: 'رابط غير موجود' });
+
+  let ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
+           req.headers['x-real-ip'] || 
+           req.ip || '';
+  ip = ip.replace('::ffff:', '');
+
+  console.log('📝 نقرة جديدة:', {
+    ip,
+    source: source || 'unknown',
+    accuracy: accuracy ? `±${Math.round(accuracy)}m` : 'N/A',
+    location: country ? `${country} - ${city}` : 'unknown'
+  });
+
   db.run(`
-    INSERT INTO clicks (link_id, ip_address, country, city, device_type, browser, os, lat, lng)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [link.id, ip, country, city, deviceType, browser, os, lat, lng]);
+    INSERT INTO clicks (link_id, ip_address, country, city, device_type, browser, os, lat, lng, accuracy, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    link.id, ip, country || null, city || null,
+    deviceType, browser, os,
+    lat || null, lng || null,
+    accuracy || null, source || 'ip'
+  ]);
 
-  console.log('✅ حفظ:', { ip, country, city, lat, lng });
-  res.json({ success: true, ip, location: { country, city, lat, lng } });
+  console.log('✅ تم الحفظ');
+  res.json({ success: true });
 });
 
 app.get('/track.html', (req, res) => {
