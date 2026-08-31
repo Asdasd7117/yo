@@ -15,7 +15,6 @@ db.initDB().then(() => {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`✅ السيرفر شغّال على المنفذ ${PORT}`);
-    console.log(`🌐 افتح http://localhost:${PORT}`);
   });
 }).catch(err => {
   console.error('❌ خطأ في قاعدة البيانات:', err);
@@ -27,7 +26,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 🔗 إنشاء رابط مختصر
+// 🔗 إنشاء رابط مختصر - ينتهي بالدومين الأصلي
 app.post('/api/shorten', async (req, res) => {
   const { url, customAlias } = req.body;
 
@@ -35,9 +34,9 @@ app.post('/api/shorten', async (req, res) => {
     return res.status(400).json({ error: 'الرابط مطلوب' });
   }
 
-  // التحقق من صحة الرابط
+  let parsedUrl;
   try {
-    new URL(url);
+    parsedUrl = new URL(url);
   } catch {
     return res.status(400).json({ error: 'رابط غير صالح' });
   }
@@ -46,30 +45,24 @@ app.post('/api/shorten', async (req, res) => {
 
   // إذا المستخدم طلب اسم مخصص
   if (customAlias && customAlias.trim() !== '') {
-    shortCode = getSlug(customAlias.trim().toLowerCase());
-    
-    // التحقق إذا الاسم موجود مسبقاً
-    const existing = db.get('SELECT id FROM links WHERE short_code = ?', [shortCode]);
-    if (existing) {
-      return res.status(400).json({ error: 'هذا الاسم مستخدم بالفعل، جرب اسم آخر' });
-    }
+    const aliasSlug = getSlug(customAlias.trim().toLowerCase());
+    shortCode = `${aliasSlug}/${parsedUrl.hostname}`;
   } else {
-    // إنشاء كود عشوائي مقروء
-    shortCode = generateReadableCode();
-    
-    // التأكد من عدم التكرار
-    let attempts = 0;
-    while (db.get('SELECT id FROM links WHERE short_code = ?', [shortCode])) {
-      shortCode = generateReadableCode();
-      attempts++;
-      if (attempts > 10) break;
-    }
+    // إنشاء بادئة قصيرة + الدومين الكامل
+    const prefix = generatePrefix();
+    shortCode = `${prefix}/${parsedUrl.hostname}`;
+  }
+
+  // التحقق من عدم التكرار
+  const existing = db.get('SELECT id FROM links WHERE short_code = ?', [shortCode]);
+  if (existing) {
+    shortCode = `${shortCode}-${Math.floor(Math.random() * 900) + 100}`;
   }
 
   // حفظ الرابط
   db.run(
-    'INSERT INTO links (short_code, original_url, custom_alias) VALUES (?, ?, ?)',
-    [shortCode, url, customAlias ? 1 : 0]
+    'INSERT INTO links (short_code, original_url) VALUES (?, ?)',
+    [shortCode, url]
   );
 
   const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -80,18 +73,16 @@ app.post('/api/shorten', async (req, res) => {
   });
 });
 
-// دالة إنشاء كود مقروء
-function generateReadableCode() {
-  const words = ['go', 'link', 'get', 'now', 'tap', 'click', 'view', 'see', 'try', 'open'];
-  const randomWord = words[Math.floor(Math.random() * words.length)];
-  const randomNum = Math.floor(Math.random() * 900) + 100;
-  return `${randomWord}${randomNum}`;
+// دالة إنشاء بادئة قصيرة
+function generatePrefix() {
+  const prefixes = ['go', 'link', 'v', 'r', 'to', 'at', 'in', 'on'];
+  return prefixes[Math.floor(Math.random() * prefixes.length)];
 }
 
 // 📊 لوحة التحكم
 app.get('/api/dashboard', (req, res) => {
   const links = db.all(`
-    SELECT l.id, l.short_code, l.original_url, l.custom_alias, l.created_at,
+    SELECT l.id, l.short_code, l.original_url, l.created_at,
            COUNT(c.id) as clicks_count
     FROM links l
     LEFT JOIN clicks c ON c.link_id = l.id
@@ -102,8 +93,9 @@ app.get('/api/dashboard', (req, res) => {
 });
 
 // 📈 تفاصيل نقرات رابط معين
-app.get('/api/clicks/:shortCode', (req, res) => {
-  const link = db.get('SELECT * FROM links WHERE short_code = ?', [req.params.shortCode]);
+app.get('/api/clicks/*', (req, res) => {
+  const shortCode = req.params[0];
+  const link = db.get('SELECT * FROM links WHERE short_code = ?', [shortCode]);
   if (!link) {
     return res.status(404).json({ error: 'الرابط غير موجود' });
   }
@@ -119,7 +111,7 @@ app.get('/api/clicks/:shortCode', (req, res) => {
   res.json({ link, clicks });
 });
 
-// 📝 تسجيل النقرة مع الموقع - الإصدار المحسّن
+// 📝 تسجيل النقرة مع الموقع
 app.post('/api/click', async (req, res) => {
   const { shortCode, deviceType, browser, os } = req.body;
 
@@ -128,7 +120,6 @@ app.post('/api/click', async (req, res) => {
     return res.status(404).json({ error: 'رابط غير موجود' });
   }
 
-  // الحصول على IP الحقيقي من الهيدرز
   let ip = '';
   if (req.headers['x-forwarded-for']) {
     ip = req.headers['x-forwarded-for'].split(',')[0].trim();
@@ -138,89 +129,35 @@ app.post('/api/click', async (req, res) => {
     ip = req.ip || req.connection.remoteAddress;
   }
 
-  // تنظيف IP (إزالة ::ffff: إذا موجود)
   ip = ip.replace('::ffff:', '');
-
   console.log('🔍 IP المستخدم:', ip);
 
   let country = null, city = null, lat = null, lng = null;
 
-  // محاولة الحصول على الموقع من ip-api.com (HTTP وليس HTTPS)
   try {
-    console.log('🌐 جاري الاتصال بـ ip-api.com...');
-    const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon,countryCode`);
+    const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`);
     const geoData = await geoRes.json();
 
-    console.log('📍 بيانات الموقع من ip-api.com:', JSON.stringify(geoData));
+    console.log('📍 بيانات الموقع:', JSON.stringify(geoData));
 
     if (geoData.status === 'success') {
       country = geoData.country;
       city = geoData.city;
       lat = geoData.lat;
       lng = geoData.lon;
-      console.log('✅ تم الحصول على الموقع:', country, city, lat, lng);
-    } else {
-      console.log('❌ فشل ip-api.com:', geoData.message);
-      
-      // محاولة بديلة: ipinfo.io
-      try {
-        console.log('🔄 محاولة ipinfo.io...');
-        const ipinfoRes = await fetch(`https://ipinfo.io/${ip}/json`);
-        const ipinfoData = await ipinfoRes.json();
-        
-        if (ipinfoData.country) {
-          country = ipinfoData.country;
-          city = ipinfoData.city;
-          if (ipinfoData.loc) {
-            const [latStr, lngStr] = ipinfoData.loc.split(',');
-            lat = parseFloat(latStr);
-            lng = parseFloat(lngStr);
-          }
-          console.log('✅ ipinfo.io نجح:', country, city);
-        }
-      } catch (err2) {
-        console.error('❌ ipinfo.io فشل أيضاً:', err2.message);
-      }
+      console.log('✅ الموقع:', country, city);
     }
   } catch (err) {
-    console.error('❌ خطأ في الاتصال بـ ip-api.com:', err.message);
-    
-    // محاولة أخيرة: ipinfo.io
-    try {
-      console.log('🔄 محاولة أخيرة: ipinfo.io...');
-      const ipinfoRes = await fetch(`https://ipinfo.io/${ip}/json`);
-      const ipinfoData = await ipinfoRes.json();
-      
-      if (ipinfoData.country) {
-        country = ipinfoData.country;
-        city = ipinfoData.city;
-        if (ipinfoData.loc) {
-          const [latStr, lngStr] = ipinfoData.loc.split(',');
-          lat = parseFloat(latStr);
-          lng = parseFloat(lngStr);
-        }
-        console.log('✅ ipinfo.io نجح:', country, city);
-      }
-    } catch (err2) {
-      console.error(' جميع المحاولات فشلت:', err2.message);
-    }
+    console.error(' خطأ Geocoding:', err.message);
   }
 
-  console.log('💾 البيانات النهائية:', { country, city, lat, lng });
-
-  // حفظ في قاعدة البيانات
   db.run(`
     INSERT INTO clicks (link_id, country, city, device_type, browser, os, lat, lng)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, [link.id, country, city, deviceType, browser, os, lat, lng]);
 
-  console.log('✅ تم حفظ النقرة في قاعدة البيانات');
-
-  res.json({ 
-    success: true, 
-    location: { country, city, lat, lng },
-    ip: ip
-  });
+  console.log('✅ تم حفظ النقرة');
+  res.json({ success: true, location: { country, city, lat, lng } });
 });
 
 // 🎯 صفحة التتبع
@@ -228,9 +165,16 @@ app.get('/track.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'track.html'));
 });
 
-// 🔄 إعادة التوجيه
-app.get('/:shortCode', (req, res) => {
-  const link = db.get('SELECT * FROM links WHERE short_code = ?', [req.params.shortCode]);
+//  إعادة التوجيه - يقرأ المسار الكامل (wildcard)
+app.get('/*', (req, res) => {
+  const fullPath = req.params[0];
+  
+  // تجاهل المسارات الثابتة
+  if (!fullPath || fullPath === 'track.html' || fullPath.startsWith('api/')) {
+    return res.status(404).send('غير موجود');
+  }
+
+  const link = db.get('SELECT * FROM links WHERE short_code = ?', [fullPath]);
   
   if (!link) {
     return res.status(404).send(`
@@ -246,7 +190,7 @@ app.get('/:shortCode', (req, res) => {
         </style>
       </head>
       <body>
-        <h1 class="error">❌ الرابط غير موجود</h1>
+        <h1 class="error"> الرابط غير موجود</h1>
         <p>الرابط اللي تبحث عنه مو موجود أو تم حذفه</p>
         <a href="/">← رجوع للصفحة الرئيسية</a>
       </body>
@@ -260,7 +204,7 @@ app.get('/:shortCode', (req, res) => {
   const os = ua.os.name || 'Unknown';
 
   res.redirect(
-    `/track.html?code=${link.short_code}` +
+    `/track.html?code=${encodeURIComponent(link.short_code)}` +
     `&url=${encodeURIComponent(link.original_url)}` +
     `&dt=${deviceType}` +
     `&br=${encodeURIComponent(browser)}` +
