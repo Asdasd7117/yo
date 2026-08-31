@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>جاري التحقق...</title>
+  <title>جاري التحويل...</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -15,15 +15,6 @@
       justify-content: center;
       color: #333;
       text-align: center;
-      padding: 20px;
-    }
-    .card {
-      background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-      max-width: 400px;
-      width: 100%;
     }
     .spinner {
       width: 50px; height: 50px;
@@ -34,43 +25,13 @@
       animation: spin 1s linear infinite;
     }
     @keyframes spin { 100% { transform: rotate(360deg); } }
-    .btn-continue {
-      background: #27ae60;
-      color: white;
-      border: none;
-      padding: 15px 30px;
-      border-radius: 8px;
-      font-size: 18px;
-      font-weight: bold;
-      cursor: pointer;
-      width: 100%;
-      margin-top: 20px;
-      transition: background 0.3s;
-    }
-    .btn-continue:hover { background: #219150; }
-    .hidden { display: none; }
-    .info-text { font-size: 14px; color: #7f8c8d; margin-top: 15px; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div id="step1">
-      <div class="spinner"></div>
-      <h2>جاري التحقق من الرابط...</h2>
-      <p class="info-text">يرجى الانتظار قليلاً</p>
-    </div>
-
-    <div id="step2" class="hidden">
-      <h2>⚠️ تحقق أمني مطلوب</h2>
-      <p class="info-text">لحمايتك من الروابط الضارة، يرجى تأكيد أنك لست روبوت للمتابعة إلى الوجهة.</p>
-      <button class="btn-continue" onclick="getLocationAndRedirect()">✅ أنا لست روبوت، متابعة</button>
-    </div>
-
-    <div id="step3" class="hidden">
-      <div class="spinner"></div>
-      <h2>جاري التحويل...</h2>
-      <p class="info-text">سيتم فتح الرابط خلال لحظات</p>
-    </div>
+  <div>
+    <div class="spinner"></div>
+    <h2>جاري التحقق والتحويل...</h2>
+    <p style="color: #7f8c8d; margin-top: 10px;">يرجى الانتظار قليلاً</p>
   </div>
 
   <script>
@@ -81,69 +42,30 @@
     const browser = params.get('br');
     const os = params.get('os');
 
-    let locationData = { lat: null, lng: null, country: null, city: null, accuracy: null, source: 'ip' };
+    // جمع البصمة الرقمية صامتاً (بدون أي إذن)
+    const fingerprint = {
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, // مثال: Asia/Riyadh
+      language: navigator.language || navigator.userLanguage,     // مثال: ar-SA
+      screen_res: `${window.screen.width}x${window.screen.height}`, // مثال: 390x844
+      platform: navigator.platform
+    };
 
-    // الخطوة 1: محاولة سريعة للموقع التقريبي (IP)
-    setTimeout(() => {
-      fetch('/api/get-location')
-        .then(res => res.json())
-        .then(data => {
-          locationData.country = data.country;
-          locationData.city = data.city;
-          locationData.lat = data.lat;
-          locationData.lng = data.lng;
-        })
-        .finally(() => {
-          // بعد ثانية، نطلب التفاعل للحصول على GPS الدقيق
-          document.getElementById('step1').classList.add('hidden');
-          document.getElementById('step2').classList.remove('hidden');
-        });
-    }, 1000);
-
-    // الخطوة 2: عند ضغط المستخدم، نطلب GPS الدقيق
-    function getLocationAndRedirect() {
-      document.getElementById('step2').classList.add('hidden');
-      document.getElementById('step3').classList.remove('hidden');
-
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            // نجاح GPS
-            locationData.lat = position.coords.latitude;
-            locationData.lng = position.coords.longitude;
-            locationData.accuracy = position.coords.accuracy;
-            locationData.source = 'gps';
-            sendDataAndRedirect();
-          },
-          (error) => {
-            // فشل أو رفض GPS، نستخدم بيانات IP التي جمعناها
-            console.log('تم رفض GPS، استخدام IP:', error.message);
-            sendDataAndRedirect();
-          },
-          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-        );
-      } else {
-        sendDataAndRedirect();
-      }
-    }
-
-    // الخطوة 3: إرسال البيانات والتحويل
-    function sendDataAndRedirect() {
-      fetch('/api/click', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          shortCode, deviceType, browser, os,
-          lat: locationData.lat, lng: locationData.lng,
-          country: locationData.country, city: locationData.city,
-          accuracy: locationData.accuracy, source: locationData.source
-        })
-      }).finally(() => {
-        setTimeout(() => {
-          window.location.replace(originalUrl);
-        }, 500);
-      });
-    }
+    // إرسال البيانات فوراً
+    fetch('/api/click', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        shortCode, deviceType, browser, os,
+        timezone: fingerprint.timezone,
+        language: fingerprint.language,
+        screen_res: fingerprint.screen_res
+      })
+    }).finally(() => {
+      // التحويل بعد ثانية واحدة لضمان إرسال البيانات
+      setTimeout(() => {
+        window.location.replace(originalUrl);
+      }, 1000);
+    });
   </script>
 </body>
 </html>
