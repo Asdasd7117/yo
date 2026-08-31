@@ -27,7 +27,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-//  إنشاء رابط مختصر
+// 🔗 إنشاء رابط مختصر
 app.post('/api/shorten', async (req, res) => {
   const { url, customAlias } = req.body;
 
@@ -119,7 +119,7 @@ app.get('/api/clicks/:shortCode', (req, res) => {
   res.json({ link, clicks });
 });
 
-// 📝 تسجيل النقرة مع الموقع
+// 📝 تسجيل النقرة مع الموقع - الإصدار المحسّن
 app.post('/api/click', async (req, res) => {
   const { shortCode, deviceType, browser, os } = req.body;
 
@@ -128,36 +128,99 @@ app.post('/api/click', async (req, res) => {
     return res.status(404).json({ error: 'رابط غير موجود' });
   }
 
-  // الحصول على IP
-  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
-             req.headers['x-real-ip'] || 
-             req.ip;
+  // الحصول على IP الحقيقي من الهيدرز
+  let ip = '';
+  if (req.headers['x-forwarded-for']) {
+    ip = req.headers['x-forwarded-for'].split(',')[0].trim();
+  } else if (req.headers['x-real-ip']) {
+    ip = req.headers['x-real-ip'].trim();
+  } else {
+    ip = req.ip || req.connection.remoteAddress;
+  }
+
+  // تنظيف IP (إزالة ::ffff: إذا موجود)
+  ip = ip.replace('::ffff:', '');
+
+  console.log('🔍 IP المستخدم:', ip);
 
   let country = null, city = null, lat = null, lng = null;
 
+  // محاولة الحصول على الموقع من ip-api.com (HTTP وليس HTTPS)
   try {
-    // استخدام ipapi.co (مجاني، 1000 طلب/يوم)
-    const geoRes = await fetch(`https://ipapi.co/${ip}/json/`);
+    console.log('🌐 جاري الاتصال بـ ip-api.com...');
+    const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon,countryCode`);
     const geoData = await geoRes.json();
 
-    if (geoData.error) {
-      console.log('Geocoding error:', geoData.reason);
-    } else {
-      country = geoData.country_name;
+    console.log('📍 بيانات الموقع من ip-api.com:', JSON.stringify(geoData));
+
+    if (geoData.status === 'success') {
+      country = geoData.country;
       city = geoData.city;
-      lat = geoData.latitude;
-      lng = geoData.longitude;
+      lat = geoData.lat;
+      lng = geoData.lon;
+      console.log('✅ تم الحصول على الموقع:', country, city, lat, lng);
+    } else {
+      console.log('❌ فشل ip-api.com:', geoData.message);
+      
+      // محاولة بديلة: ipinfo.io
+      try {
+        console.log('🔄 محاولة ipinfo.io...');
+        const ipinfoRes = await fetch(`https://ipinfo.io/${ip}/json`);
+        const ipinfoData = await ipinfoRes.json();
+        
+        if (ipinfoData.country) {
+          country = ipinfoData.country;
+          city = ipinfoData.city;
+          if (ipinfoData.loc) {
+            const [latStr, lngStr] = ipinfoData.loc.split(',');
+            lat = parseFloat(latStr);
+            lng = parseFloat(lngStr);
+          }
+          console.log('✅ ipinfo.io نجح:', country, city);
+        }
+      } catch (err2) {
+        console.error('❌ ipinfo.io فشل أيضاً:', err2.message);
+      }
     }
   } catch (err) {
-    console.error('Geocoding error:', err.message);
+    console.error('❌ خطأ في الاتصال بـ ip-api.com:', err.message);
+    
+    // محاولة أخيرة: ipinfo.io
+    try {
+      console.log('🔄 محاولة أخيرة: ipinfo.io...');
+      const ipinfoRes = await fetch(`https://ipinfo.io/${ip}/json`);
+      const ipinfoData = await ipinfoRes.json();
+      
+      if (ipinfoData.country) {
+        country = ipinfoData.country;
+        city = ipinfoData.city;
+        if (ipinfoData.loc) {
+          const [latStr, lngStr] = ipinfoData.loc.split(',');
+          lat = parseFloat(latStr);
+          lng = parseFloat(lngStr);
+        }
+        console.log('✅ ipinfo.io نجح:', country, city);
+      }
+    } catch (err2) {
+      console.error(' جميع المحاولات فشلت:', err2.message);
+    }
   }
 
+  console.log('💾 البيانات النهائية:', { country, city, lat, lng });
+
+  // حفظ في قاعدة البيانات
   db.run(`
     INSERT INTO clicks (link_id, country, city, device_type, browser, os, lat, lng)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, [link.id, country, city, deviceType, browser, os, lat, lng]);
 
-  res.json({ success: true });
+  console.log('✅ تم حفظ النقرة في قاعدة البيانات');
+
+  res.json({ 
+    success: true, 
+    location: { country, city, lat, lng },
+    ip: ip
+  });
 });
 
 // 🎯 صفحة التتبع
