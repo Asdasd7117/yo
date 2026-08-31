@@ -28,16 +28,15 @@ async function initDB() {
     country TEXT, city TEXT,
     device_type TEXT, browser TEXT, os TEXT,
     lat REAL, lng REAL,
+    accuracy REAL,
+    source TEXT,
     clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(link_id) REFERENCES links(id)
   )`);
 
-  // إضافة عمود IP إذا كان الجدول موجود مسبقاً بدون العمود
-  try {
-    db.run(`ALTER TABLE clicks ADD COLUMN ip_address TEXT`);
-  } catch (e) {
-    // العمود موجود بالفعل، تجاهل الخطأ
-  }
+  // إضافة الأعمدة الجديدة إذا لم تكن موجودة
+  try { db.run(`ALTER TABLE clicks ADD COLUMN accuracy REAL`); } catch(e) {}
+  try { db.run(`ALTER TABLE clicks ADD COLUMN source TEXT`); } catch(e) {}
 
   saveDB();
   console.log('✅ DB جاهزة');
