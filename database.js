@@ -28,20 +28,18 @@ async function initDB() {
     country TEXT, city TEXT,
     device_type TEXT, browser TEXT, os TEXT,
     lat REAL, lng REAL,
-    timezone TEXT,
-    language TEXT,
-    screen_res TEXT,
+    accuracy REAL,
+    source TEXT,
     clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(link_id) REFERENCES links(id)
   )`);
 
-  // إضافة الأعمدة الجديدة بأمان
-  try { db.run(`ALTER TABLE clicks ADD COLUMN timezone TEXT`); } catch(e) {}
-  try { db.run(`ALTER TABLE clicks ADD COLUMN language TEXT`); } catch(e) {}
-  try { db.run(`ALTER TABLE clicks ADD COLUMN screen_res TEXT`); } catch(e) {}
+  // إضافة الأعمدة الجديدة إذا لم تكن موجودة
+  try { db.run(`ALTER TABLE clicks ADD COLUMN accuracy REAL`); } catch(e) {}
+  try { db.run(`ALTER TABLE clicks ADD COLUMN source TEXT`); } catch(e) {}
 
   saveDB();
-  console.log('✅ قاعدة البيانات جاهزة ومحدثة');
+  console.log('✅ DB جاهزة');
 }
 
 function saveDB() {
@@ -49,7 +47,7 @@ function saveDB() {
   try {
     const data = db.export();
     fs.writeFileSync(DB_PATH, Buffer.from(data));
-  } catch (err) { console.error('Error saving DB:', err); }
+  } catch (err) { console.error(err); }
 }
 
 function run(sql, params = []) { db.run(sql, params); saveDB(); }
