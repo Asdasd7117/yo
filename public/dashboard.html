@@ -73,8 +73,8 @@
       const totalClicks = allLinks.reduce((sum, l) => sum + parseInt(l.clicks_count), 0);
       document.getElementById('stats').innerHTML = `
         <div class="stat-cards">
-          <div class="stat-card"><div class="stat-value">${totalLinks}</div><div class="stat-label">إجمالي الروابط</div></div>
-          <div class="stat-card"><div class="stat-value">${totalClicks}</div><div class="stat-label">إجمالي النقرات</div></div>
+          <div class="stat-card"><div class="stat-value">${totalLinks}</div><div class="stat-label">الروابط</div></div>
+          <div class="stat-card"><div class="stat-value">${totalClicks}</div><div class="stat-label">النقرات</div></div>
         </div>
       `;
     }
@@ -99,12 +99,17 @@
           return;
         }
 
-        // تجميع البيانات الذكية (البصمة الرقمية)
-        const timezones = {}, languages = {}, screens = {};
+        const countries = {}, cities = {}, devices = {}, browsers = {}, osList = {}, sources = {};
         data.clicks.forEach(c => {
-          if (c.timezone) timezones[c.timezone] = (timezones[c.timezone] || 0) + 1;
-          if (c.language) languages[c.language] = (languages[c.language] || 0) + 1;
-          if (c.screen_res) screens[c.screen_res] = (screens[c.screen_res] || 0) + 1;
+          if (c.country) countries[c.country] = (countries[c.country] || 0) + 1;
+          if (c.city) cities[c.city] = (cities[c.city] || 0) + 1;
+          devices[c.device_type] = (devices[c.device_type] || 0) + 1;
+          browsers[c.browser] = (browsers[c.browser] || 0) + 1;
+          osList[c.os] = (osList[c.os] || 0) + 1;
+          
+          // تحديد مصدر الموقع (GPS أو IP)
+          const src = c.source === 'gps' ? '📍 GPS (دقيق)' : '🌐 IP (تقريبي)';
+          sources[src] = (sources[src] || 0) + 1;
         });
 
         detailsDiv.innerHTML = `
@@ -115,20 +120,33 @@
 
           <div class="stats-grid">
             <div class="stat-box">
-              <h4>🌍 الدول والمدن</h4>
-              ${data.clicks.map(c => `<div class="stat-item"><span>${c.country || '-'} (${c.city || '-'})</span></div>`).join('')}
+              <h4>🌍 الدول</h4>
+              ${Object.entries(countries).map(([c,n]) => `<div class="stat-item"><span>${c}</span><strong>${n}</strong></div>`).join('')}
             </div>
+
             <div class="stat-box">
-              <h4>⏰ المنطقة الزمنية (أدق مؤشر للمكان)</h4>
-              ${Object.entries(timezones).map(([t,n]) => `<div class="stat-item"><span>${t}</span><strong>${n}</strong></div>`).join('')}
+              <h4>🏙️ المدن</h4>
+              ${Object.entries(cities).map(([c,n]) => `<div class="stat-item"><span>${c}</span><strong>${n}</strong></div>`).join('')}
             </div>
+
             <div class="stat-box">
-              <h4>🌐 لغة الجهاز</h4>
-              ${Object.entries(languages).map(([l,n]) => `<div class="stat-item"><span>${l}</span><strong>${n}</strong></div>`).join('')}
+              <h4>📱 الأجهزة</h4>
+              ${Object.entries(devices).map(([d,n]) => `<div class="stat-item"><span>${d}</span><strong>${n}</strong></div>`).join('')}
             </div>
+
             <div class="stat-box">
-              <h4>📱 دقة الشاشة</h4>
-              ${Object.entries(screens).map(([s,n]) => `<div class="stat-item"><span>${s}</span><strong>${n}</strong></div>`).join('')}
+              <h4>🌐 المتصفحات</h4>
+              ${Object.entries(browsers).map(([b,n]) => `<div class="stat-item"><span>${b}</span><strong>${n}</strong></div>`).join('')}
+            </div>
+
+            <div class="stat-box">
+              <h4>💻 أنظمة التشغيل</h4>
+              ${Object.entries(osList).map(([o,n]) => `<div class="stat-item"><span>${o}</span><strong>${n}</strong></div>`).join('')}
+            </div>
+
+            <div class="stat-box">
+              <h4>🎯 دقة الموقع</h4>
+              ${Object.entries(sources).map(([s,n]) => `<div class="stat-item"><span>${s}</span><strong>${n}</strong></div>`).join('')}
             </div>
           </div>
 
@@ -138,11 +156,13 @@
               <tr>
                 <th>#</th>
                 <th>🌐 IP</th>
-                <th>الدولة / المدينة</th>
-                <th>المنطقة الزمنية</th>
-                <th>اللغة</th>
-                <th>دقة الشاشة</th>
-                <th>الجهاز / المتصفح</th>
+                <th>الدولة</th>
+                <th>المدينة</th>
+                <th>الجهاز</th>
+                <th>المتصفح</th>
+                <th>النظام</th>
+                <th>🎯 الدقة</th>
+                <th>🗺️ الموقع</th>
                 <th>الوقت</th>
               </tr>
             </thead>
@@ -154,16 +174,21 @@
                     <code class="ip-code">${c.ip_address || '-'}</code>
                     ${c.ip_address ? `<br><a href="https://whatismyipaddress.com/ip/${c.ip_address}" target="_blank" class="ip-link">🔍 بحث</a>` : ''}
                   </td>
+                  <td><strong>${c.country || '-'}</strong></td>
+                  <td>${c.city || '-'}</td>
+                  <td>${c.device_type || '-'}</td>
+                  <td>${c.browser || '-'}</td>
+                  <td>${c.os || '-'}</td>
                   <td>
-                    <strong>${c.country || '-'}</strong><br>
-                    <small style="color:#7f8c8d">${c.city || '-'}</small>
+                    ${c.source === 'gps' ? 
+                      `<span style="color:#27ae60;font-weight:bold">📍 GPS<br><small>±${Math.round(c.accuracy)}م</small></span>` : 
+                      `<span style="color:#e67e22">🌐 IP<br><small>تقريبي</small></span>`}
                   </td>
-                  <td>${c.timezone || '-'}</td>
-                  <td>${c.language || '-'}</td>
-                  <td>${c.screen_res || '-'}</td>
                   <td>
-                    ${c.device_type || '-'}<br>
-                    <small style="color:#7f8c8d">${c.browser || ''}</small>
+                    ${c.lat && c.lng ? 
+                      `<a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" class="map-link">📍 عرض</a>
+                      <br><small>(${c.lat.toFixed(4)}, ${c.lng.toFixed(4)})</small>` : 
+                      '<span style="color:#999">غير متوفر</span>'}
                   </td>
                   <td>${new Date(c.clicked_at).toLocaleString('ar-SA')}</td>
                 </tr>
@@ -172,7 +197,7 @@
           </table>
 
           ${data.clicks.some(c => c.lat && c.lng) ? `
-            <h4 style="margin-top:30px;">🗺️ خريطة المواقع (من IP)</h4>
+            <h4 style="margin-top:30px;">🗺️ خريطة المواقع</h4>
             <div class="map-container">
               <iframe 
                 width="100%" 
@@ -203,7 +228,6 @@
       navigator.clipboard.writeText(fullUrl).then(() => alert('✅ تم النسخ!'));
     }
 
-    // تشغيل الدالة عند تحميل الصفحة
     loadLinks();
   </script>
 </body>
